@@ -28,15 +28,12 @@ impl<'a> NuTrie<'a> {
         unsafe {
             for current_term in terms {
                 let prefix_len = get_common_prefix_len((*(*last_node).t).term, current_term.term);
+
                 // println!("IT {} {} {}", (*(*last_node).t).term, current_term.term, prefix_len);
 
                 if prefix_len >= (*(*last_node).t).term.len() {
                     parent = last_node;
                     last_node = (&mut *parent).add_child(TrieNode::new(Some(parent), current_term as *const Term));
-//                    let mut newnode = Box::new(TrieNode::new(Some(parent), current_term as *const Term));
-//                    last_node = &mut *newnode as *mut TrieNode;
-//
-//                    (&mut *parent).add_child(newnode);
                     continue;
                 }
 
