@@ -7,7 +7,8 @@ extern crate typed_arena;
 pub struct NuTrie<'a> {
     node_arena: typed_arena::Arena<TrieNode<'a>>,
     term_arena: typed_arena::Arena<Term<'a>>,
-    root: TrieNode<'a>,
+    pub root: TrieNode<'a>,
+    root_term: Box<Term<'a>>,
 }
 
 pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
@@ -19,10 +20,13 @@ pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
 impl<'a> NuTrie<'a> {
     pub fn new<I>(term_id: TermId, terms: I) -> NuTrie<'a>
             where I: Iterator<Item=&'a mut Term<'a>> {
+
+        let root_term = Box::new(Term{term: "", term_id: 0});
         let mut trie = NuTrie {
             node_arena: typed_arena::Arena::new(),
             term_arena: typed_arena::Arena::new(),
-            root: TrieNode::new(None, &Term { term: "", term_id: 0 }),
+            root: TrieNode::new(None, &*root_term),
+            root_term: root_term,
         };
 
         let mut term_serial = term_id;
@@ -33,7 +37,7 @@ impl<'a> NuTrie<'a> {
         unsafe {
             for current_term in terms {
                 let prefix_len = get_common_prefix_len((*(*last_node).t).term, current_term.term);
-                //println!("IT {} {} {}", (*(*last_node).t).term, current_term.term, prefix_len);
+                println!("IT {} {} {}", (*(*last_node).t).term, current_term.term, prefix_len);
 
                 if prefix_len >= (*(*last_node).t).term.len() {
                     parent = last_node;
@@ -44,6 +48,12 @@ impl<'a> NuTrie<'a> {
 
                 while prefix_len < (*(*(&*last_node).parent()).t).term.len() {
                     last_node = (&*last_node).parent();
+                    let mut ch = (*last_node).first_child;
+                    while let Some(child) = ch {
+                        ch = (*child).next;
+                    }
+                    (*last_node).first_child = None;
+                    (*last_node).last_child = None;
                     // TODO
                 }
 
@@ -76,8 +86,8 @@ impl<'a> NuTrie<'a> {
     }
 }
 
-struct TrieNode<'a> {
-    t: *const Term<'a>,
+pub struct TrieNode<'a> {
+    pub t: *const Term<'a>,
     parent: Option<*mut TrieNode<'a>>,
     first_child: Option<*mut TrieNode<'a>>,
     last_child: Option<*mut TrieNode<'a>>,

@@ -78,7 +78,10 @@ fn main() {
     let mut terms: Vec<Term> = h.iter().map(|(term, &term_id)| Term {term: term, term_id: term_id}).collect();
     terms.sort_by(|a, b| a.term.cmp(b.term));
 
-    NuTrie::new(term_serial, terms.iter_mut());
+    let trie = NuTrie::new(term_serial, terms.iter_mut());
+    unsafe {
+    println!("{}", (*trie.root.t).term_id);
+    }
 
     // println!("{}", get_common_prefix_len("autobus", "autoba"));
 
