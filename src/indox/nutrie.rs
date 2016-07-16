@@ -32,10 +32,11 @@ impl<'a> NuTrie<'a> {
 
                 if prefix_len >= (*(*last_node).t).term.len() {
                     parent = last_node;
-                    let mut newnode = Box::new(TrieNode::new(Some(parent), current_term as *const Term));
-                    last_node = &mut *newnode as *mut TrieNode;
-
-                    (&mut *parent).add_child(newnode);
+                    last_node = (&mut *parent).add_child(TrieNode::new(Some(parent), current_term as *const Term));
+//                    let mut newnode = Box::new(TrieNode::new(Some(parent), current_term as *const Term));
+//                    last_node = &mut *newnode as *mut TrieNode;
+//
+//                    (&mut *parent).add_child(newnode);
                     continue;
                 }
 
@@ -63,16 +64,17 @@ impl<'a> NuTrie<'a> {
                     });
 
                     let mut new_node = Box::new(TrieNode::new((*last_node).parent, &*new_term));
-                    mem::swap(&mut *last_node, &mut *new_node);
                     trie.new_terms.push(new_term);
 
                     parent = last_node;
-                    (&mut *parent).add_child(new_node);
+                    last_node = &mut *new_node as *mut TrieNode;
+                    mem::swap(&mut *last_node, &mut *parent);
+
+                    (*last_node).parent = Some(parent);
+                    (*parent).children.push(new_node);
                 }
 
-                let mut new_node = Box::new(TrieNode::new(Some(parent), current_term));
-                last_node = &mut *new_node as *mut TrieNode;
-                (&mut *parent).add_child(new_node);
+                last_node = (&mut *parent).add_child(TrieNode::new(Some(parent), current_term));
             }
         }
     }
@@ -97,7 +99,10 @@ impl<'a> TrieNode<'a> {
         self.parent.unwrap()
     }
 
-    unsafe fn add_child(&mut self, child: Box<TrieNode<'a>>) {
-        self.children.push(child);
+    unsafe fn add_child(&mut self, child: TrieNode<'a>) -> *mut TrieNode<'a> {
+        let mut newnode = Box::new(child);
+        let ret = &mut *newnode as *mut TrieNode;
+        self.children.push(newnode);
+        ret
     }
 }
