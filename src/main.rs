@@ -21,25 +21,24 @@ fn main() {
     let file = BufReader::new(&f);
 
     let mut term_serial: TermId = 0;
+    let mut doc_serial: DocId = 0;
+
     let mut h = HashMap::<String, TermId>::new();
+    let mut docbuf = TermBuf::new();
+    let mut tfbuf = TermBuf::new();
+    let mut posbuf = TermBuf::new();
+
     for line in file.lines() {
         let l = line.unwrap();
-        let mut forward_index = Vec::<(TermId, i32)>::new();
+        doc_serial += 1;
+
+        let mut forward_index = Vec::<(TermId, u32)>::new();
         for (position, s) in l.split("|").enumerate() {
             let term_id = *h.entry(s.into()).or_insert_with(|| {
                 term_serial += 1;
                 term_serial
             });
-            //let term_id = match h.get(s) {
-            //    Some(&term_id) => term_id,
-            //    _ => {
-            //        term_serial += 1;
-            //        h.insert(s.to_owned(), term_serial);
-            //        term_serial
-            //    }
-            //};
-
-            forward_index.push((term_id, position as i32));
+            forward_index.push((term_id, position as u32));
         }
 
         forward_index.sort_by(|a, b| {
@@ -58,21 +57,20 @@ fn main() {
         let mut last_term_id = 0;
         let mut tf = 0;
         for (term_id, position) in forward_index {
-            // posbuf
+            posbuf.add_doc(term_id, position);
             if term_id == last_term_id {
                 tf += 1;
             } else {
                 if last_term_id != 0 {
-                    //docbuf
-                    //tfbuf
+                    docbuf.add_doc(term_id, doc_serial);
+                    tfbuf.add_doc(term_id, tf);
                 }
                 last_term_id = term_id;
                 tf = 1;
             }
         }
-        //docbuf
-        //termbuf
-
+        docbuf.add_doc(last_term_id, doc_serial);
+        tfbuf.add_doc(last_term_id, tf);
     }
 
     let mut terms: Vec<Term> = h.iter().map(|(term, &term_id)| Term {term: term, term_id: term_id}).collect();
@@ -84,7 +82,7 @@ fn main() {
     for term in terms.iter() {
         bk.insert_term(term);
     }
-    bk.print();
+    //bk.print();
 
 
     // println!("{}", get_common_prefix_len("autobus", "autoba"));
