@@ -14,7 +14,7 @@ pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
 }
 
 impl<'a> NuTrie<'a> {
-    pub fn create<I>(term_id: TermId, terms: I) where I: Iterator<Item=&'a mut Term<'a>> {
+    pub fn create<I>(term_id: TermId, terms: I) where I: Iterator<Item=&'a Term<'a>> {
 
         let mut trie = NuTrie {
             root: TrieNode::new(None, &Term{term: "", term_id: 0}),
