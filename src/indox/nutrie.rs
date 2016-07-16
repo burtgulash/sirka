@@ -2,13 +2,9 @@ use std::cmp;
 use std::mem;
 use indox::*;
 
-extern crate typed_arena;
-
 pub struct NuTrie<'a> {
-    node_arena: typed_arena::Arena<TrieNode<'a>>,
-    term_arena: typed_arena::Arena<Term<'a>>,
-    pub root: TrieNode<'a>,
-    root_term: Box<Term<'a>>,
+    new_terms: Vec<Box<Term<'a>>>,
+    root: TrieNode<'a>,
 }
 
 pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
@@ -18,43 +14,42 @@ pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
 }
 
 impl<'a> NuTrie<'a> {
-    pub fn new<I>(term_id: TermId, terms: I) -> NuTrie<'a>
-            where I: Iterator<Item=&'a mut Term<'a>> {
+    pub fn create<I>(term_id: TermId, terms: I) where I: Iterator<Item=&'a mut Term<'a>> {
 
-        let root_term = Box::new(Term{term: "", term_id: 0});
         let mut trie = NuTrie {
-            node_arena: typed_arena::Arena::new(),
-            term_arena: typed_arena::Arena::new(),
-            root: TrieNode::new(None, &*root_term),
-            root_term: root_term,
+            root: TrieNode::new(None, &Term{term: "", term_id: 0}),
+            new_terms: Vec::new(),
         };
 
         let mut term_serial = term_id;
-
         let mut last_node = &mut trie.root as *mut TrieNode;
         let mut parent: *mut TrieNode;
 
         unsafe {
             for current_term in terms {
                 let prefix_len = get_common_prefix_len((*(*last_node).t).term, current_term.term);
-                println!("IT {} {} {}", (*(*last_node).t).term, current_term.term, prefix_len);
+                // println!("IT {} {} {}", (*(*last_node).t).term, current_term.term, prefix_len);
 
                 if prefix_len >= (*(*last_node).t).term.len() {
                     parent = last_node;
-                    last_node = trie.node_arena.alloc(TrieNode::new(Some(parent), current_term as *const Term));
-                    (&mut *parent).add_child(last_node);
+                    let mut newnode = Box::new(TrieNode::new(Some(parent), current_term as *const Term));
+                    last_node = &mut *newnode as *mut TrieNode;
+
+                    (&mut *parent).add_child(newnode);
                     continue;
                 }
 
                 while prefix_len < (*(*(&*last_node).parent()).t).term.len() {
                     last_node = (&*last_node).parent();
-                    let mut ch = (*last_node).first_child;
-                    while let Some(child) = ch {
-                        ch = (*child).next;
+                    let prefix = (*(*last_node).t).term;
+
+                    for child in (*last_node).children.iter() {
+                        // TODO flush
+                        let child_term = (*child.t).term;
+                        let suffix = &child_term[prefix.len()..];
+                        println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
                     }
-                    (*last_node).first_child = None;
-                    (*last_node).last_child = None;
-                    // TODO
+                    (*last_node).children.clear();
                 }
 
                 if prefix_len == (*(*(&*last_node).parent()).t).term.len() {
@@ -62,36 +57,31 @@ impl<'a> NuTrie<'a> {
                 } else {
                     term_serial += 1;
                     let last_term = (*(*last_node).t).term;
-                    let newnode = trie.term_arena.alloc(Term {
+                    let new_term = Box::new(Term {
                         term: &last_term[..cmp::min(last_term.len(), prefix_len)],
                         term_id: term_serial,
                     });
 
-                    let new = trie.node_arena.alloc(TrieNode::new((*last_node).parent, newnode));
-                    mem::swap(&mut *last_node, &mut *new);
+                    let mut new_node = Box::new(TrieNode::new((*last_node).parent, &*new_term));
+                    mem::swap(&mut *last_node, &mut *new_node);
+                    trie.new_terms.push(new_term);
 
                     parent = last_node;
-                    last_node = new;
-
-                    (&mut *parent).add_child(last_node);
+                    (&mut *parent).add_child(new_node);
                 }
 
-                //println!("{}", current_term.term);
-                last_node = trie.node_arena.alloc(TrieNode::new(Some(parent), current_term));
-                (&mut *parent).add_child(last_node);
+                let mut new_node = Box::new(TrieNode::new(Some(parent), current_term));
+                last_node = &mut *new_node as *mut TrieNode;
+                (&mut *parent).add_child(new_node);
             }
         }
-
-        trie
     }
 }
 
-pub struct TrieNode<'a> {
-    pub t: *const Term<'a>,
+struct TrieNode<'a> {
+    t: *const Term<'a>,
     parent: Option<*mut TrieNode<'a>>,
-    first_child: Option<*mut TrieNode<'a>>,
-    last_child: Option<*mut TrieNode<'a>>,
-    next: Option<*mut TrieNode<'a>>,
+    children: Vec<Box<TrieNode<'a>>>,
 }
 
 impl<'a> TrieNode<'a> {
@@ -99,9 +89,7 @@ impl<'a> TrieNode<'a> {
         TrieNode {
             t: t,
             parent: parent,
-            first_child: None,
-            last_child: None,
-            next: None,
+            children: Vec::new(),
         }
     }
 
@@ -109,16 +97,7 @@ impl<'a> TrieNode<'a> {
         self.parent.unwrap()
     }
 
-    unsafe fn add_child(&mut self, child: *mut TrieNode<'a>) {
-        (*child).parent = Some(self as *mut TrieNode);
-        match self.first_child {
-            None => {
-                self.first_child = Some(child);
-                (*child).next = None;
-            },
-            _ => (*self.last_child.unwrap()).next = Some(child),
-        };
-
-        self.last_child = Some(self as *mut TrieNode);
+    unsafe fn add_child(&mut self, child: Box<TrieNode<'a>>) {
+        self.children.push(child);
     }
 }
