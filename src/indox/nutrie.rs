@@ -1,6 +1,8 @@
 use std::cmp;
 use std::mem;
 use std::cell::RefCell;
+use std::slice;
+
 use indox::*;
 
 pub struct NuTrie<'a> {
@@ -12,6 +14,10 @@ pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
     a.chars().zip(b.chars())
         .take_while(|&(ac, bc)| { ac == bc })
         .fold(0, |acc, (x, _)| acc + x.len_utf8())
+}
+
+fn slice_to_it<'a, T: Clone + 'a>(sit: slice::Iter<'a, T>) -> Box<Iterator<Item=T> + 'a> {
+    Box::new(sit.cloned())
 }
 
 impl<'a> NuTrie<'a> {
@@ -37,9 +43,9 @@ impl<'a> NuTrie<'a> {
                         Some(parent),
                         current_term as *const Term,
                         Some(Postings {
-                            docs: Box::new(docs.get_iterator(current_term.term_id).unwrap().cloned()),
-                            tfs: Box::new(tf.get_iterator(current_term.term_id).unwrap().cloned()),
-                            positions: Box::new(poss.get_iterator(current_term.term_id).unwrap().cloned()),
+                            docs: slice_to_it(docs.get_iterator(current_term.term_id).unwrap()),
+                            tfs: slice_to_it(tf.get_iterator(current_term.term_id).unwrap()),
+                            positions: slice_to_it(poss.get_iterator(current_term.term_id).unwrap()),
                         }),
                     ));
                     continue;
@@ -51,23 +57,15 @@ impl<'a> NuTrie<'a> {
 
                     for child in (*last_node).children.iter_mut() {
                         // TODO flush
-                        //let child_term = (*child.t).term;
-                        //let suffix = &child_term[prefix.len()..];
-                        //println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
-                        //let mut y = &child.postings;
-                        //let postings = child.postings.unwrap().docs;
-                        if let Some(ref postings) = *child.postings.borrow_mut() {
-                            let x = postings.docs.next();
-                            println!("tu");
+                        let child_term = (*child.t).term;
+                        let suffix = &child_term[prefix.len()..];
+                        println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
+
+                        if let Some(ref mut postings) = child.postings {
+                            while let Some(posting) = postings.docs.next() {
+                                println!("{}", posting);
+                            }
                         }
-                        //let x = child.postings.borrow_mut().unwrap().docs;
-                        // for posting in child.postings.unwrap().docs.next() {
-                        // //for posting in child.postings.as_ref().unwrap().docs {
-                        //     println!("posting: {:?}", posting);
-                        // }
-                        //for posting in child.postings.unwrap().docs {
-                        //    println!("posting {:?}", posting);
-                        //}
                     }
                     (*last_node).children.clear();
                 }
@@ -86,9 +84,9 @@ impl<'a> NuTrie<'a> {
                         (*last_node).parent,
                         &*new_term,
                         Some(Postings {
-                            docs: Box::new(docs.get_iterator(current_term.term_id).unwrap().cloned()),
-                            tfs: Box::new(tf.get_iterator(current_term.term_id).unwrap().cloned()),
-                            positions: Box::new(poss.get_iterator(current_term.term_id).unwrap().cloned()),
+                            docs: slice_to_it(docs.get_iterator(current_term.term_id).unwrap()),
+                            tfs: slice_to_it(tf.get_iterator(current_term.term_id).unwrap()),
+                            positions: slice_to_it(poss.get_iterator(current_term.term_id).unwrap()),
                         }),
                     ));
                     trie.new_terms.push(new_term);
@@ -105,9 +103,9 @@ impl<'a> NuTrie<'a> {
                     Some(parent),
                     current_term,
                     Some(Postings {
-                        docs: Box::new(docs.get_iterator(current_term.term_id).unwrap().cloned()),
-                        tfs: Box::new(tf.get_iterator(current_term.term_id).unwrap().cloned()),
-                        positions: Box::new(poss.get_iterator(current_term.term_id).unwrap().cloned()),
+                        docs: slice_to_it(docs.get_iterator(current_term.term_id).unwrap()),
+                        tfs: slice_to_it(tf.get_iterator(current_term.term_id).unwrap()),
+                        positions: slice_to_it(poss.get_iterator(current_term.term_id).unwrap()),
                     }),
                 ));
             }
@@ -123,7 +121,7 @@ struct Postings<'a> {
 
 struct TrieNode<'a> {
     t: *const Term<'a>,
-    postings: RefCell<Option<Postings<'a>>>,
+    postings: Option<Postings<'a>>,
     parent: Option<*mut TrieNode<'a>>,
     children: Vec<Box<TrieNode<'a>>>,
 }
@@ -132,7 +130,7 @@ impl<'a> TrieNode<'a> {
     fn new(parent: Option<*mut TrieNode<'a>>, t: *const Term<'a>, postings: Option<Postings<'a>>) -> TrieNode<'a> {
         TrieNode {
             t: t,
-            postings: RefCell::new(postings),
+            postings: postings,
             parent: parent,
             children: Vec::new(),
         }
