@@ -76,7 +76,7 @@ fn main() {
     let mut terms: Vec<Term> = h.iter().map(|(term, &term_id)| Term {term: term, term_id: term_id}).collect();
     terms.sort_by(|a, b| a.term.cmp(b.term));
 
-    NuTrie::create(term_serial, terms.iter());
+    NuTrie::create(term_serial, terms.iter(), docbuf, tfbuf, posbuf);
 
     let mut bk = BKTree::new();
     for term in terms.iter() {

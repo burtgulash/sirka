@@ -1,5 +1,6 @@
 use std::cmp;
 use std::mem;
+use std::cell::RefCell;
 use indox::*;
 
 pub struct NuTrie<'a> {
@@ -14,14 +15,13 @@ pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
 }
 
 impl<'a> NuTrie<'a> {
-    pub fn create<I>(term_id: TermId, terms: I) where I: Iterator<Item=&'a Term<'a>> {
+    pub fn create<I>(mut term_serial: TermId, terms: I, docs: TermBuf, tf: TermBuf, poss: TermBuf) where I: Iterator<Item=&'a Term<'a>> {
 
         let mut trie = NuTrie {
-            root: TrieNode::new(None, &Term{term: "", term_id: 0}),
+            root: TrieNode::new(None, &Term{term: "", term_id: 0}, None),
             new_terms: Vec::new(),
         };
 
-        let mut term_serial = term_id;
         let mut last_node = &mut trie.root as *mut TrieNode;
         let mut parent: *mut TrieNode;
 
@@ -33,7 +33,15 @@ impl<'a> NuTrie<'a> {
 
                 if prefix_len >= (*(*last_node).t).term.len() {
                     parent = last_node;
-                    last_node = (&mut *parent).add_child(TrieNode::new(Some(parent), current_term as *const Term));
+                    last_node = (&mut *parent).add_child(TrieNode::new(
+                        Some(parent),
+                        current_term as *const Term,
+                        Some(Postings {
+                            docs: Box::new(docs.get_iterator(current_term.term_id).unwrap().cloned()),
+                            tfs: Box::new(tf.get_iterator(current_term.term_id).unwrap().cloned()),
+                            positions: Box::new(poss.get_iterator(current_term.term_id).unwrap().cloned()),
+                        }),
+                    ));
                     continue;
                 }
 
@@ -41,11 +49,25 @@ impl<'a> NuTrie<'a> {
                     last_node = (&*last_node).parent();
                     let prefix = (*(*last_node).t).term;
 
-                    for child in (*last_node).children.iter() {
+                    for child in (*last_node).children.iter_mut() {
                         // TODO flush
-                        let child_term = (*child.t).term;
-                        let suffix = &child_term[prefix.len()..];
-                        println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
+                        //let child_term = (*child.t).term;
+                        //let suffix = &child_term[prefix.len()..];
+                        //println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
+                        //let mut y = &child.postings;
+                        //let postings = child.postings.unwrap().docs;
+                        if let Some(ref postings) = *child.postings.borrow_mut() {
+                            let x = postings.docs.next();
+                            println!("tu");
+                        }
+                        //let x = child.postings.borrow_mut().unwrap().docs;
+                        // for posting in child.postings.unwrap().docs.next() {
+                        // //for posting in child.postings.as_ref().unwrap().docs {
+                        //     println!("posting: {:?}", posting);
+                        // }
+                        //for posting in child.postings.unwrap().docs {
+                        //    println!("posting {:?}", posting);
+                        //}
                     }
                     (*last_node).children.clear();
                 }
@@ -60,7 +82,15 @@ impl<'a> NuTrie<'a> {
                         term_id: term_serial,
                     });
 
-                    let mut new_node = Box::new(TrieNode::new((*last_node).parent, &*new_term));
+                    let mut new_node = Box::new(TrieNode::new(
+                        (*last_node).parent,
+                        &*new_term,
+                        Some(Postings {
+                            docs: Box::new(docs.get_iterator(current_term.term_id).unwrap().cloned()),
+                            tfs: Box::new(tf.get_iterator(current_term.term_id).unwrap().cloned()),
+                            positions: Box::new(poss.get_iterator(current_term.term_id).unwrap().cloned()),
+                        }),
+                    ));
                     trie.new_terms.push(new_term);
 
                     parent = last_node;
@@ -71,22 +101,38 @@ impl<'a> NuTrie<'a> {
                     (*parent).children.push(new_node);
                 }
 
-                last_node = (&mut *parent).add_child(TrieNode::new(Some(parent), current_term));
+                last_node = (&mut *parent).add_child(TrieNode::new(
+                    Some(parent),
+                    current_term,
+                    Some(Postings {
+                        docs: Box::new(docs.get_iterator(current_term.term_id).unwrap().cloned()),
+                        tfs: Box::new(tf.get_iterator(current_term.term_id).unwrap().cloned()),
+                        positions: Box::new(poss.get_iterator(current_term.term_id).unwrap().cloned()),
+                    }),
+                ));
             }
         }
     }
 }
 
+struct Postings<'a> {
+    docs: Box<Iterator<Item=DocId> + 'a>,
+    tfs: Box<Iterator<Item=DocId> + 'a>,
+    positions: Box<Iterator<Item=DocId> + 'a>,
+}
+
 struct TrieNode<'a> {
     t: *const Term<'a>,
+    postings: RefCell<Option<Postings<'a>>>,
     parent: Option<*mut TrieNode<'a>>,
     children: Vec<Box<TrieNode<'a>>>,
 }
 
 impl<'a> TrieNode<'a> {
-    fn new(parent: Option<*mut TrieNode<'a>>, t: *const Term<'a>) -> TrieNode<'a> {
+    fn new(parent: Option<*mut TrieNode<'a>>, t: *const Term<'a>, postings: Option<Postings<'a>>) -> TrieNode<'a> {
         TrieNode {
             t: t,
+            postings: RefCell::new(postings),
             parent: parent,
             children: Vec::new(),
         }
