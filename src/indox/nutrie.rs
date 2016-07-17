@@ -42,11 +42,11 @@ impl<'a> NuTrie<'a> {
                     last_node = (&mut *parent).add_child(TrieNode::new(
                         Some(parent),
                         current_term.clone(),
-                        Some(Postings {
+                        Some(Postings::Borrowed(PostingsT{
                             docs: slice_to_it(docs.get_iterator(current_term.term_id).unwrap()),
                             tfs: slice_to_it(tf.get_iterator(current_term.term_id).unwrap()),
                             positions: slice_to_it(poss.get_iterator(current_term.term_id).unwrap()),
-                        }),
+                        })),
                     ));
                     continue;
                 }
@@ -61,11 +61,12 @@ impl<'a> NuTrie<'a> {
                         let suffix = &child_term[prefix.len()..];
                         println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
 
-                        if let Some(ref mut postings) = child.postings {
-                            while let Some(posting) = postings.docs.next() {
-                                println!("{}", posting);
-                            }
-                        }
+                        // TODO enable this
+                        //if let Some(ref mut postings) = child.postings {
+                        //    while let Some(posting) = postings.docs.next() {
+                        //        println!("{}", posting);
+                        //    }
+                        //}
                     }
                     (*last_node).children.clear();
                 }
@@ -83,11 +84,11 @@ impl<'a> NuTrie<'a> {
                     let mut new_node = Box::new(TrieNode::new(
                         (*last_node).parent,
                         new_term,
-                        Some(Postings {
+                        Some(Postings::Borrowed(PostingsT{
                             docs: slice_to_it(docs.get_iterator(current_term.term_id).unwrap()),
                             tfs: slice_to_it(tf.get_iterator(current_term.term_id).unwrap()),
                             positions: slice_to_it(poss.get_iterator(current_term.term_id).unwrap()),
-                        }),
+                        })),
                     ));
 
                     parent = last_node;
@@ -101,23 +102,29 @@ impl<'a> NuTrie<'a> {
                 last_node = (&mut *parent).add_child(TrieNode::new(
                     Some(parent),
                     current_term.clone(),
-                    Some(Postings {
+                    Some(Postings::Borrowed(PostingsT{
                         docs: slice_to_it(docs.get_iterator(current_term.term_id).unwrap()),
                         tfs: slice_to_it(tf.get_iterator(current_term.term_id).unwrap()),
                         positions: slice_to_it(poss.get_iterator(current_term.term_id).unwrap()),
-                    }),
+                    })),
                 ));
             }
         }
     }
 }
 
-struct Postings<'a> {
-    docs: Box<Iterator<Item=DocId> + 'a>,
-    tfs: Box<Iterator<Item=DocId> + 'a>,
-    positions: Box<Iterator<Item=DocId> + 'a>,
+type BorrowedPostingsIter<'a> = Box<Iterator<Item=DocId> + 'a>;
+struct PostingsT<T> {
+    docs: T,
+    tfs: T,
+    positions: T,
+}
+enum Postings<'a> {
+    Borrowed(PostingsT<BorrowedPostingsIter<'a>>),
+    Owned(PostingsT<Vec<DocId>>),
 }
 
+#[derive(Clone, Copy)]
 struct IteratorPointer {
     it_i: usize,
     current_doc: DocId,
@@ -144,21 +151,80 @@ impl PartialEq for IteratorPointer {
 impl Eq for IteratorPointer {}
 
 impl<'a> Postings<'a> {
-    fn merge(ps: &mut Vec<&mut Postings>) -> Vec<DocId> {
-        let mut res = Vec::new();
-        let mut h = BinaryHeap::from_iter(ps.iter_mut().enumerate().map(|(i, p)| {
+    fn merge(to_merge: &mut [&mut Postings]) -> Postings<'a> {
+        unsafe {
+        let mut owned_its = to_merge.iter_mut().map(|p| p as *mut &mut Postings)
+            .filter_map(|p| match **p {
+                Postings::Owned(ref x) => Some(PostingsT::<BorrowedPostingsIter> {
+                    docs: Box::new(x.docs.iter().cloned()),
+                    tfs: Box::new(x.docs.iter().cloned()),
+                    positions: Box::new(x.docs.iter().cloned()),
+                }),
+                _ => None,
+            })
+            .collect::<Vec<PostingsT<BorrowedPostingsIter>>>();
+        }
+
+        let mut its = to_merge.iter_mut()
+            .filter_map(|p| match **p {
+                Postings::Borrowed(ref mut x) => Some(x),
+                _ => None,
+            })
+            //.extend(owned_its.iter().map(|&p| &p))
+            .collect::<Vec<&mut PostingsT<BorrowedPostingsIter>>>();
+
+        let mut h = BinaryHeap::from_iter(its.iter_mut().enumerate().map(|(i, p)| {
             IteratorPointer{it_i: i, current_doc: p.docs.next().unwrap()}
         }));
 
-        while let Some(mut itptr) = h.pop() {
-            if let Some(doc_id) = ps[itptr.it_i].docs.next() {
-                itptr.current_doc = doc_id;
-                h.push(itptr);
-                res.push(doc_id);
+        let mut res_docs = Vec::<DocId>::new();
+        let mut res_tfs = Vec::<DocId>::new();
+        let mut res_pos = Vec::<DocId>::new();
+
+        let mut last_doc_id = 0;
+        let mut tf = 0;
+        let mut tmp_pos: Vec<DocId> = Vec::new();
+
+        macro_rules! ADD_DOC {
+            () => {
+                res_docs.push(last_doc_id);
+                res_tfs.push(tf);
+
+                tmp_pos.sort();
+                res_pos.extend_from_slice(&tmp_pos[..]);
+                tmp_pos.clear();
             }
         }
 
-        res
+        while let Some(mut itptr) = h.pop() {
+            if let Some(doc_id) = its[itptr.it_i].docs.next() {
+                itptr.current_doc = doc_id;
+                h.push(itptr);
+
+                let it_tf = its[itptr.it_i].tfs.next().unwrap();
+                if doc_id == last_doc_id {
+                    tf += it_tf;
+                    for _ in 0..it_tf {
+                        let pos = its[itptr.it_i].positions.next().unwrap();
+                        tmp_pos.push(pos)
+                    }
+                } else {
+                    if last_doc_id != 0 {
+                        ADD_DOC!();
+                    }
+
+                    last_doc_id = doc_id;
+                    tf = it_tf;
+                }
+            }
+        }
+        ADD_DOC!();
+
+        Postings::Owned(PostingsT {
+            docs: res_docs,
+            tfs: res_tfs,
+            positions: res_pos,
+        })
     }
 }
 
