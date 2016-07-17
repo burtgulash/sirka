@@ -1,7 +1,9 @@
 use std::cmp;
+use std::cmp::Ordering;
 use std::mem;
-use std::cell::RefCell;
+use std::collections::BinaryHeap;
 use std::slice;
+use std::iter::FromIterator;
 
 use indox::*;
 
@@ -16,7 +18,7 @@ pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
         .fold(0, |acc, (x, _)| acc + x.len_utf8())
 }
 
-fn slice_to_it<'a, T: Clone + 'a>(sit: slice::Iter<'a, T>) -> Box<Iterator<Item=T> + 'a> {
+fn slice_to_it<'a, T: Clone>(sit: slice::Iter<'a, T>) -> Box<Iterator<Item=T> + 'a> {
     Box::new(sit.cloned())
 }
 
@@ -117,6 +119,50 @@ struct Postings<'a> {
     docs: Box<Iterator<Item=DocId> + 'a>,
     tfs: Box<Iterator<Item=DocId> + 'a>,
     positions: Box<Iterator<Item=DocId> + 'a>,
+}
+
+struct IteratorPointer {
+    it_i: usize,
+    current_doc: DocId,
+}
+
+impl Ord for IteratorPointer {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (&-(self.current_doc as isize)).cmp(&-(other.current_doc as isize))
+    }
+}
+
+impl PartialOrd for IteratorPointer {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for IteratorPointer {
+    fn eq(&self, other: &Self) -> bool {
+        self.current_doc == other.current_doc
+    }
+}
+
+impl Eq for IteratorPointer {}
+
+impl<'a> Postings<'a> {
+    fn merge(ps: &mut Vec<&mut Postings>) -> Vec<DocId> {
+        let mut res = Vec::new();
+        let mut h = BinaryHeap::from_iter(ps.iter_mut().enumerate().map(|(i, p)| {
+            IteratorPointer{it_i: i, current_doc: p.docs.next().unwrap()}
+        }));
+
+        while let Some(mut itptr) = h.pop() {
+            if let Some(doc_id) = ps[itptr.it_i].docs.next() {
+                itptr.current_doc = doc_id;
+                h.push(itptr);
+                res.push(doc_id);
+            }
+        }
+
+        res
+    }
 }
 
 struct TrieNode<'a> {
