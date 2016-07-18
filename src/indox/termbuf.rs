@@ -2,7 +2,7 @@ use indox::*;
 use std::mem;
 
 pub struct TermBuf {
-    buffers: Vec<Vec<DocId>>,
+    pub buffers: Vec<Option<Vec<DocId>>>,
     max_term_id: TermId,
 }
 
@@ -16,19 +16,21 @@ impl TermBuf {
 
     pub fn add_doc(&mut self, term_id: TermId, doc_id: DocId) {
         while self.max_term_id <= term_id {
-            self.buffers.push(Vec::new());
+            self.buffers.push(Some(Vec::new()));
             self.max_term_id += 1;
         }
 
-        self.buffers[term_id as usize].push(doc_id);
+        self.buffers[term_id as usize].as_mut().unwrap().push(doc_id);
     }
 
     pub fn get_termbuf(&mut self, term_id: TermId) -> Option<Vec<DocId>> {
         if term_id > self.max_term_id {
             None
         } else {
-            let buffer = mem::replace(&mut self.buffers[term_id as usize], Vec::new());
-            Some(buffer)
+            let buffer = mem::replace(&mut self.buffers[term_id as usize], None);
+            assert!(buffer.is_some());
+            assert!(buffer.as_ref().unwrap().len() > 0);
+            buffer
         }
     }
 
@@ -37,7 +39,7 @@ impl TermBuf {
             panic!();
         }
 
-        mem::replace(&mut self.buffers[term_id as usize], buf);
+        let _ = mem::replace(&mut self.buffers[term_id as usize], Some(buf));
     }
 }
 

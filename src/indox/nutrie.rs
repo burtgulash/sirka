@@ -4,7 +4,6 @@ use std::mem;
 use std::slice;
 use std::iter::FromIterator;
 use std::collections::BinaryHeap;
-use std::collections::LinkedList;
 
 use indox::*;
 
@@ -59,18 +58,24 @@ impl<'a> NuTrie<'a> {
                         // TODO flush
                         let child_term = child.t.term;
                         let suffix = &child_term[prefix.len()..];
-                        println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
+                        // println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
 
                         // TODO enable this
                         if let Some(ref postings) = child.postings {
                             let mut iter = postings.docs.iter();
                             while let Some(posting) = iter.next() {
-                                println!("{}", posting);
+                                println!("TERM: {}, POSTING: {}", child_term, posting);
                             }
                         }
                     }
                     (*last_node).children.clear();
                 }
+
+                let mut child_postings = Postings {
+                    docs: docs.get_termbuf(current_term.term_id).unwrap(),
+                    tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
+                    positions: positions.get_termbuf(current_term.term_id).unwrap(),
+                };
 
                 if prefix_len == (*(&*last_node).parent()).t.term.len() {
                     parent = (&*last_node).parent();
@@ -83,13 +88,8 @@ impl<'a> NuTrie<'a> {
                         term_id: term_serial,
                     };
 
-                    let mut child1_postings = Postings {
-                        docs: docs.get_termbuf(current_term.term_id).unwrap(),
-                        tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
-                        positions: positions.get_termbuf(current_term.term_id).unwrap(),
-                    };
                     let ref mut child2_postings = (*last_node).postings.as_mut().unwrap();
-                    let mut postings_to_merge = vec![&mut child1_postings, child2_postings];
+                    let mut postings_to_merge = vec![&mut child_postings, child2_postings];
 
                     let mut new_node = Box::new(TrieNode::new(
                         (*last_node).parent,
@@ -108,11 +108,7 @@ impl<'a> NuTrie<'a> {
                 last_node = (&mut *parent).add_child(TrieNode::new(
                     Some(parent),
                     current_term.clone(),
-                    Some(Postings {
-                        docs: docs.get_termbuf(current_term.term_id).unwrap(),
-                        tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
-                        positions: positions.get_termbuf(current_term.term_id).unwrap(),
-                    }),
+                    Some(child_postings)
                 ));
             }
         }

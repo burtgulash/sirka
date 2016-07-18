@@ -62,8 +62,8 @@ fn main() {
                 tf += 1;
             } else {
                 if last_term_id != 0 {
-                    docbuf.add_doc(term_id, doc_serial);
-                    tfbuf.add_doc(term_id, tf);
+                    docbuf.add_doc(last_term_id, doc_serial);
+                    tfbuf.add_doc(last_term_id, tf);
                 }
                 last_term_id = term_id;
                 tf = 1;
@@ -71,6 +71,10 @@ fn main() {
         }
         docbuf.add_doc(last_term_id, doc_serial);
         tfbuf.add_doc(last_term_id, tf);
+    }
+
+    for buf in &docbuf.buffers {
+        println!("{:?}", buf.as_ref().unwrap());
     }
 
     let mut terms: Vec<Term> = h.iter().map(|(term, &term_id)| Term {term: term, term_id: term_id}).collect();
