@@ -95,6 +95,11 @@ impl<'a> NuTrie<'a> {
                     Some(child_postings)
                 ));
             }
+
+            while let Some(parent) = (*last_node).parent {
+                last_node = parent;
+                Self::flush_node(&mut *last_node);
+            }
         }
     }
 
