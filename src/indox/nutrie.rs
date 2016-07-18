@@ -28,7 +28,7 @@ impl<'a> NuTrie<'a> {
         let root_term = Term{term: "", term_id: 0};
         let mut root = TrieNode::new(None, root_term, None);
 
-        let mut last_node = &mut root as *mut TrieNode;
+        let mut last_node: *mut TrieNode = &mut root;
         let mut parent: *mut TrieNode;
 
         unsafe {
@@ -82,14 +82,19 @@ impl<'a> NuTrie<'a> {
                         term: &last_term[..cmp::min(last_term.len(), prefix_len)],
                         term_id: term_serial,
                     };
+
+                    let mut child1_postings = Postings {
+                        docs: docs.get_termbuf(current_term.term_id).unwrap(),
+                        tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
+                        positions: positions.get_termbuf(current_term.term_id).unwrap(),
+                    };
+                    let ref mut child2_postings = (*last_node).postings.as_mut().unwrap();
+                    let mut postings_to_merge = vec![&mut child1_postings, child2_postings];
+
                     let mut new_node = Box::new(TrieNode::new(
                         (*last_node).parent,
                         new_term,
-                        Some(Postings {
-                            docs: docs.get_termbuf(current_term.term_id).unwrap(),
-                            tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
-                            positions: positions.get_termbuf(current_term.term_id).unwrap(),
-                        }),
+                        Some(Postings::merge(&mut postings_to_merge[..])),
                     ));
 
                     parent = last_node;

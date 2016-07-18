@@ -31,6 +31,14 @@ impl TermBuf {
             Some(buffer)
         }
     }
+
+    pub fn return_termbuf(&mut self, term_id: TermId, buf: Vec<DocId>) {
+        if term_id > self.max_term_id {
+            panic!();
+        }
+
+        mem::replace(&mut self.buffers[term_id as usize], buf);
+    }
 }
 
 #[cfg(test)]
