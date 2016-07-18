@@ -121,6 +121,7 @@ impl<'a> BKNode<'a> {
         }
     }
 
+    #[allow(dead_code)]
     fn print(&self, lvl: usize) {
         for ch in self.children.iter() {
             println!("{:width$}: {}", ch.distance, ch.t.term,

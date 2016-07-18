@@ -34,7 +34,8 @@ impl TermBuf {
         }
     }
 
-    pub fn return_termbuf(&mut self, term_id: TermId, buf: Vec<DocId>) {
+    #[allow(dead_code)]
+    fn return_termbuf(&mut self, term_id: TermId, buf: Vec<DocId>) {
         if term_id > self.max_term_id {
             panic!();
         }

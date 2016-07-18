@@ -56,21 +56,32 @@ fn main() {
 
         let mut last_term_id = 0;
         let mut tf = 0;
+
+        let mut control_tf = 0;
+        let len = forward_index.len();
+
+        macro_rules! ADD_DOC {
+            () => {
+                docbuf.add_doc(last_term_id, doc_serial);
+                tfbuf.add_doc(last_term_id, tf);
+                control_tf += tf;
+            }
+        }
+
         for (term_id, position) in forward_index {
             posbuf.add_doc(term_id, position);
             if term_id == last_term_id {
                 tf += 1;
             } else {
                 if last_term_id != 0 {
-                    docbuf.add_doc(last_term_id, doc_serial);
-                    tfbuf.add_doc(last_term_id, tf);
+                    ADD_DOC!();
                 }
                 last_term_id = term_id;
                 tf = 1;
             }
         }
-        docbuf.add_doc(last_term_id, doc_serial);
-        tfbuf.add_doc(last_term_id, tf);
+        ADD_DOC!();
+        assert_eq!(control_tf as usize, len);
     }
 
     // for buf in &docbuf.buffers {
@@ -80,8 +91,9 @@ fn main() {
     let mut terms: Vec<Term> = h.iter().map(|(term, &term_id)| Term {term: term, term_id: term_id}).collect();
     terms.sort_by(|a, b| a.term.cmp(b.term));
 
-    NuTrie::create(term_serial, terms.iter(), docbuf, tfbuf, posbuf);
+    create_trie(term_serial, terms.iter(), docbuf, tfbuf, posbuf);
 
+    println!("Creating BK Tree");
     let mut bk = BKTree::new();
     for term in terms.iter() {
         bk.insert_term(term);
