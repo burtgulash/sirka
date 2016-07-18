@@ -73,9 +73,9 @@ fn main() {
         tfbuf.add_doc(last_term_id, tf);
     }
 
-    for buf in &docbuf.buffers {
-        println!("{:?}", buf.as_ref().unwrap());
-    }
+    // for buf in &docbuf.buffers {
+    //     println!("{:?}", buf.as_ref().unwrap());
+    // }
 
     let mut terms: Vec<Term> = h.iter().map(|(term, &term_id)| Term {term: term, term_id: term_id}).collect();
     terms.sort_by(|a, b| a.term.cmp(b.term));

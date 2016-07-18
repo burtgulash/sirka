@@ -52,23 +52,7 @@ impl<'a> NuTrie<'a> {
 
                 while prefix_len < (*(&*last_node).parent()).t.term.len() {
                     last_node = (&*last_node).parent();
-                    let prefix = (*last_node).t.term;
-
-                    for child in (*last_node).children.iter_mut() {
-                        // TODO flush
-                        let child_term = child.t.term;
-                        let suffix = &child_term[prefix.len()..];
-                        // println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
-
-                        // TODO enable this
-                        if let Some(ref postings) = child.postings {
-                            let mut iter = postings.docs.iter();
-                            while let Some(posting) = iter.next() {
-                                println!("TERM: {}, POSTING: {}", child_term, posting);
-                            }
-                        }
-                    }
-                    (*last_node).children.clear();
+                    Self::flush_node(&mut *last_node);
                 }
 
                 let mut child_postings = Postings {
@@ -112,6 +96,25 @@ impl<'a> NuTrie<'a> {
                 ));
             }
         }
+    }
+
+    fn flush_node(node: &mut TrieNode) {
+        let prefix = node.t.term;
+        for child in node.children.iter() {
+            // TODO flush
+            let child_term = child.t.term;
+            let suffix = &child_term[prefix.len()..];
+            // println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
+
+            // TODO enable this
+            if let Some(ref postings) = child.postings {
+                let mut iter = postings.docs.iter();
+                while let Some(posting) = iter.next() {
+                    println!("TERM: {}, POSTING: {}", child_term, posting);
+                }
+            }
+        }
+        node.children.clear();
     }
 }
 
