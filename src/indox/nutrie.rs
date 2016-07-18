@@ -23,7 +23,7 @@ fn slice_to_it<'a, T: Clone>(sit: slice::Iter<'a, T>) -> Box<Iterator<Item=T> + 
 }
 
 impl<'a> NuTrie<'a> {
-    pub fn create<I>(mut term_serial: TermId, terms: I, docs: TermBuf, tf: TermBuf, poss: TermBuf) where I: Iterator<Item=&'a Term<'a>> {
+    pub fn create<I>(mut term_serial: TermId, terms: I, mut docs: TermBuf, mut tfs: TermBuf, mut positions: TermBuf) where I: Iterator<Item=&'a Term<'a>> {
 
         let root_term = Term{term: "", term_id: 0};
         let mut root = TrieNode::new(None, root_term, None);
@@ -42,11 +42,11 @@ impl<'a> NuTrie<'a> {
                     last_node = (&mut *parent).add_child(TrieNode::new(
                         Some(parent),
                         current_term.clone(),
-                        Some(Postings::Borrowed(PostingsT{
-                            docs: slice_to_it(docs.get_iterator(current_term.term_id).unwrap()),
-                            tfs: slice_to_it(tf.get_iterator(current_term.term_id).unwrap()),
-                            positions: slice_to_it(poss.get_iterator(current_term.term_id).unwrap()),
-                        })),
+                        Some(Postings {
+                            docs: docs.get_termbuf(current_term.term_id).unwrap(),
+                            tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
+                            positions: positions.get_termbuf(current_term.term_id).unwrap(),
+                        }),
                     ));
                     continue;
                 }
@@ -62,11 +62,12 @@ impl<'a> NuTrie<'a> {
                         println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
 
                         // TODO enable this
-                        //if let Some(ref mut postings) = child.postings {
-                        //    while let Some(posting) = postings.docs.next() {
-                        //        println!("{}", posting);
-                        //    }
-                        //}
+                        if let Some(ref postings) = child.postings {
+                            let mut iter = postings.docs.iter();
+                            while let Some(posting) = iter.next() {
+                                println!("{}", posting);
+                            }
+                        }
                     }
                     (*last_node).children.clear();
                 }
@@ -84,11 +85,11 @@ impl<'a> NuTrie<'a> {
                     let mut new_node = Box::new(TrieNode::new(
                         (*last_node).parent,
                         new_term,
-                        Some(Postings::Borrowed(PostingsT{
-                            docs: slice_to_it(docs.get_iterator(current_term.term_id).unwrap()),
-                            tfs: slice_to_it(tf.get_iterator(current_term.term_id).unwrap()),
-                            positions: slice_to_it(poss.get_iterator(current_term.term_id).unwrap()),
-                        })),
+                        Some(Postings {
+                            docs: docs.get_termbuf(current_term.term_id).unwrap(),
+                            tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
+                            positions: positions.get_termbuf(current_term.term_id).unwrap(),
+                        }),
                     ));
 
                     parent = last_node;
@@ -102,27 +103,23 @@ impl<'a> NuTrie<'a> {
                 last_node = (&mut *parent).add_child(TrieNode::new(
                     Some(parent),
                     current_term.clone(),
-                    Some(Postings::Borrowed(PostingsT{
-                        docs: slice_to_it(docs.get_iterator(current_term.term_id).unwrap()),
-                        tfs: slice_to_it(tf.get_iterator(current_term.term_id).unwrap()),
-                        positions: slice_to_it(poss.get_iterator(current_term.term_id).unwrap()),
-                    })),
+                    Some(Postings {
+                        docs: docs.get_termbuf(current_term.term_id).unwrap(),
+                        tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
+                        positions: positions.get_termbuf(current_term.term_id).unwrap(),
+                    }),
                 ));
             }
         }
     }
 }
 
-type BorrowedPostingsIter<'a> = Box<Iterator<Item=DocId> + 'a>;
 struct PostingsT<T> {
     docs: T,
     tfs: T,
     positions: T,
 }
-enum Postings<'a> {
-    Borrowed(PostingsT<BorrowedPostingsIter<'a>>),
-    Owned(PostingsT<Vec<DocId>>),
-}
+type Postings = PostingsT<Vec<DocId>>;
 
 #[derive(Clone, Copy)]
 struct IteratorPointer {
@@ -150,28 +147,13 @@ impl PartialEq for IteratorPointer {
 
 impl Eq for IteratorPointer {}
 
-impl<'a> Postings<'a> {
-    fn merge(to_merge: &mut [&mut Postings]) -> Postings<'a> {
-        unsafe {
-        let mut owned_its = to_merge.iter_mut().map(|p| p as *mut &mut Postings)
-            .filter_map(|p| match **p {
-                Postings::Owned(ref x) => Some(PostingsT::<BorrowedPostingsIter> {
-                    docs: Box::new(x.docs.iter().cloned()),
-                    tfs: Box::new(x.docs.iter().cloned()),
-                    positions: Box::new(x.docs.iter().cloned()),
-                }),
-                _ => None,
-            })
-            .collect::<Vec<PostingsT<BorrowedPostingsIter>>>();
-        }
-
-        let mut its = to_merge.iter_mut()
-            .filter_map(|p| match **p {
-                Postings::Borrowed(ref mut x) => Some(x),
-                _ => None,
-            })
-            //.extend(owned_its.iter().map(|&p| &p))
-            .collect::<Vec<&mut PostingsT<BorrowedPostingsIter>>>();
+impl Postings {
+    fn merge(to_merge: &mut [&mut Postings]) -> Postings {
+        let mut its = to_merge.iter_mut().map(|p| PostingsT {
+            docs: p.docs.iter().cloned(),
+            tfs: p.tfs.iter().cloned(),
+            positions: p.positions.iter().cloned(),
+        }).collect::<Vec<PostingsT<_>>>();
 
         let mut h = BinaryHeap::from_iter(its.iter_mut().enumerate().map(|(i, p)| {
             IteratorPointer{it_i: i, current_doc: p.docs.next().unwrap()}
@@ -220,23 +202,23 @@ impl<'a> Postings<'a> {
         }
         ADD_DOC!();
 
-        Postings::Owned(PostingsT {
+        Postings {
             docs: res_docs,
             tfs: res_tfs,
             positions: res_pos,
-        })
+        }
     }
 }
 
 struct TrieNode<'a> {
     t: Term<'a>,
-    postings: Option<Postings<'a>>,
+    postings: Option<Postings>,
     parent: Option<*mut TrieNode<'a>>,
     children: Vec<Box<TrieNode<'a>>>,
 }
 
 impl<'a> TrieNode<'a> {
-    fn new(parent: Option<*mut TrieNode<'a>>, t: Term<'a>, postings: Option<Postings<'a>>) -> TrieNode<'a> {
+    fn new(parent: Option<*mut TrieNode<'a>>, t: Term<'a>, postings: Option<Postings>) -> TrieNode<'a> {
         TrieNode {
             t: t,
             postings: postings,

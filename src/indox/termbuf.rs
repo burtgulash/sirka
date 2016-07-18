@@ -1,5 +1,5 @@
 use indox::*;
-use std::slice;
+use std::mem;
 
 pub struct TermBuf {
     buffers: Vec<Vec<DocId>>,
@@ -23,11 +23,12 @@ impl TermBuf {
         self.buffers[term_id as usize].push(doc_id);
     }
 
-    pub fn get_iterator(&self, term_id: TermId) -> Option<slice::Iter<DocId>> {
+    pub fn get_termbuf(&mut self, term_id: TermId) -> Option<Vec<DocId>> {
         if term_id > self.max_term_id {
             None
         } else {
-            Some(self.buffers[term_id as usize].iter())
+            let buffer = mem::replace(&mut self.buffers[term_id as usize], Vec::new());
+            Some(buffer)
         }
     }
 }
@@ -44,7 +45,7 @@ mod tests {
             tb.add_doc(i % max, i);
         }
         let chosen_term_id = 25;
-        for doc_id in tb.get_iterator(chosen_term_id).unwrap() {
+        for doc_id in tb.get_termbuf(chosen_term_id).unwrap() {
             println!("ITERATING THROUGH DOCS OF TERM_ID {}: {}", chosen_term_id, doc_id);
         }
     }
