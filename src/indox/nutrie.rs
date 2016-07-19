@@ -25,7 +25,7 @@ pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, bk: &mut BKTree, mu
     for current_term in terms {
         let prefix_len = get_common_prefix_len(last_node.borrow().t.term, current_term.term);
 
-        println!("IT {} {} {}", last_node.borrow().t.term, current_term.term, prefix_len);
+        // println!("IT {} {} {}", last_node.borrow().t.term, current_term.term, prefix_len);
 
         if prefix_len >= last_node.borrow().t.term.len() {
             parent = last_node;
@@ -64,8 +64,7 @@ pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, bk: &mut BKTree, mu
                 term_id: term_serial,
             };
 
-
-            let mut new_node = {
+            let new_node = {
                 let _last_node_borrow = last_node.borrow();
                 let ref child2_postings = _last_node_borrow.postings.as_ref().unwrap();
                 let postings_to_merge = vec![&child_postings, child2_postings];
@@ -80,7 +79,7 @@ pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, bk: &mut BKTree, mu
             last_node = new_node.clone();
             mem::swap(&mut *last_node.borrow_mut(), &mut *parent.borrow_mut());
 
-            *&mut last_node.borrow_mut().parent = Some(Rc::downgrade(&parent.0));
+            (&mut *last_node.borrow_mut()).parent = Some(Rc::downgrade(&parent.0));
             // *(last_node.0.borrow().parent.unwrap().upgrade().unwrap().borrow_mut()) = Some(parent);
             parent.0.borrow_mut().children.push(new_node.0);
         }
@@ -115,6 +114,8 @@ struct IteratorPointer {
 
 impl Ord for IteratorPointer {
     fn cmp(&self, other: &Self) -> Ordering {
+        // Switch compare order because Rust's BinaryHeap is a maxheap
+        // We want a minheap
         (&-(self.current_doc as isize)).cmp(&-(other.current_doc as isize))
     }
 }
@@ -264,7 +265,7 @@ impl<'a> TrieNode<'a> {
                 // TODO flush
                 let child_term = child.borrow().t.term;
                 let suffix = &child_term[prefix.len()..];
-                println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
+                //println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
 
                 // TODO enable this
                 if let Some(ref postings) = child.borrow().postings {
