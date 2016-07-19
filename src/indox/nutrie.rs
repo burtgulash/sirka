@@ -1,8 +1,9 @@
-use std::cmp;
-use std::cmp::Ordering;
-use std::mem;
+use std::cmp::{self,Ordering};
 use std::iter::FromIterator;
 use std::collections::BinaryHeap;
+use std::rc::{Rc,Weak};
+use std::cell::{RefCell,Ref,RefMut};
+use std::mem;
 
 use indox::*;
 
@@ -12,116 +13,92 @@ pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
         .fold(0, |acc, (x, _)| acc + x.len_utf8())
 }
 
-pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, mut docs: TermBuf, mut tfs: TermBuf, mut positions: TermBuf)
+pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, bk: &mut BKTree, mut docs: TermBuf, mut tfs: TermBuf, mut positions: TermBuf)
     where I: Iterator<Item=&'a Term<'a>>
 {
     let root_term = Term{term: "", term_id: 0};
-    let mut root = TrieNode::new(None, root_term, None);
+    let root = TrieNode::new(None, root_term, None);
 
-    let mut last_node: *mut TrieNode = &mut root;
-    let mut parent: *mut TrieNode;
+    let mut last_node: TrieNode = root.clone();
+    let mut parent: TrieNode;
 
-    unsafe {
-        for current_term in terms {
-            let prefix_len = get_common_prefix_len((*last_node).t.term, current_term.term);
+    for current_term in terms {
+        let prefix_len = get_common_prefix_len(last_node.borrow().t.term, current_term.term);
 
-            // println!("IT {} {} {}", (*last_node).t.term, current_term.term, prefix_len);
+        println!("IT {} {} {}", last_node.borrow().t.term, current_term.term, prefix_len);
 
-            if prefix_len >= (*last_node).t.term.len() {
-                parent = last_node;
-                last_node = (&mut *parent).add_child(TrieNode::new(
-                    Some(parent),
-                    current_term.clone(),
-                    Some(Postings {
-                        docs: docs.get_termbuf(current_term.term_id).unwrap(),
-                        tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
-                        positions: positions.get_termbuf(current_term.term_id).unwrap(),
-                    }),
-                ));
-                continue;
-            }
+        if prefix_len >= last_node.borrow().t.term.len() {
+            parent = last_node;
+            let parent_clone = parent.clone();
+            last_node = parent.add_child(TrieNode::new(
+                Some(parent_clone),
+                current_term.clone(),
+                Some(Postings {
+                    docs: docs.get_termbuf(current_term.term_id).unwrap(),
+                    tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
+                    positions: positions.get_termbuf(current_term.term_id).unwrap(),
+                }),
+            ));
+            continue;
+        }
 
-            while prefix_len < (*(&*last_node).parent()).t.term.len() {
-                last_node = (&*last_node).parent();
-                flush_node(&mut *last_node);
-            }
+        while prefix_len < last_node.parent_term_len() {
+            last_node = last_node.parent().unwrap();
+            last_node.flush();
+        }
 
-            let child_postings = Postings {
-                docs: docs.get_termbuf(current_term.term_id).unwrap(),
-                tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
-                positions: positions.get_termbuf(current_term.term_id).unwrap(),
+        let child_postings = Postings {
+            docs: docs.get_termbuf(current_term.term_id).unwrap(),
+            tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
+            positions: positions.get_termbuf(current_term.term_id).unwrap(),
+        };
+
+        if prefix_len == last_node.parent_term_len() {
+            parent = last_node.parent().unwrap();
+        } else {
+            term_serial += 1;
+            let last_term = last_node.borrow().t.term;
+
+            let new_term = Term {
+                term: &last_term[..cmp::min(last_term.len(), prefix_len)],
+                term_id: term_serial,
             };
 
-            if prefix_len == (*(&*last_node).parent()).t.term.len() {
-                parent = (&*last_node).parent();
-            } else {
-                term_serial += 1;
-                let last_term = (*last_node).t.term;
 
-                let new_term = Term {
-                    term: &last_term[..cmp::min(last_term.len(), prefix_len)],
-                    term_id: term_serial,
-                };
-
-                let ref child2_postings = (*last_node).postings.as_mut().unwrap();
+            let mut new_node = {
+                let _last_node_borrow = last_node.borrow();
+                let ref child2_postings = _last_node_borrow.postings.as_ref().unwrap();
                 let postings_to_merge = vec![&child_postings, child2_postings];
-
-                let mut new_node = Box::new(TrieNode::new(
-                    (*last_node).parent,
+                TrieNode::new(
+                    last_node.parent(),
                     new_term,
                     Some(Postings::merge(&postings_to_merge[..])),
-                ));
+                )
+            };
 
-                parent = last_node;
-                last_node = &mut *new_node as *mut TrieNode;
-                mem::swap(&mut *last_node, &mut *parent);
+            parent = last_node;
+            last_node = new_node.clone();
+            mem::swap(&mut *last_node.borrow_mut(), &mut *parent.borrow_mut());
 
-                (*last_node).parent = Some(parent);
-                (*parent).children.push(new_node);
-            }
-
-            last_node = (&mut *parent).add_child(TrieNode::new(
-                Some(parent),
-                current_term.clone(),
-                Some(child_postings)
-            ));
+            *&mut last_node.borrow_mut().parent = Some(Rc::downgrade(&parent.0));
+            // *(last_node.0.borrow().parent.unwrap().upgrade().unwrap().borrow_mut()) = Some(parent);
+            parent.0.borrow_mut().children.push(new_node.0);
         }
 
-        while let Some(parent) = (*last_node).parent {
-            last_node = parent;
-            flush_node(&mut *last_node);
-        }
+        let parent_clone = parent.clone();
+        last_node = parent.add_child(TrieNode::new(
+            Some(parent_clone),
+            current_term.clone(),
+            Some(child_postings)
+        ));
+    }
+
+    while let Some(parent) = last_node.parent() {
+        last_node = parent;
+        last_node.flush();
     }
 }
 
-fn flush_node(node: &mut TrieNode) {
-    let prefix = node.t.term;
-    for child in node.children.iter() {
-        // TODO flush
-        let child_term = child.t.term;
-        let suffix = &child_term[prefix.len()..];
-        // println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
-
-        // TODO enable this
-        if let Some(ref postings) = child.postings {
-            let mut iter = postings.docs.iter();
-            while let Some(posting) = iter.next() {
-                println!("TERM: {}, POSTING: {}", child_term, posting);
-            }
-        }
-    }
-
-    let prefix_postings = {
-        let postings_to_merge = node.children.iter()
-            .map(|p| {
-                p.postings.as_ref().unwrap()
-            })
-            .collect::<Vec<_>>();
-        Postings::merge(&postings_to_merge[..])
-    };
-
-    node.children.clear();
-}
 
 struct PostingsT<T> {
     docs: T,
@@ -232,31 +209,84 @@ impl Postings {
     }
 }
 
-struct TrieNode<'a> {
+type TrieNodeRef<'a> = Rc<RefCell<_TrieNode<'a>>>;
+type TrieNodeWeak<'a> = Weak<RefCell<_TrieNode<'a>>>;
+struct TrieNode<'a>(TrieNodeRef<'a>);
+struct _TrieNode<'a> {
     t: Term<'a>,
     postings: Option<Postings>,
-    parent: Option<*mut TrieNode<'a>>,
-    children: Vec<Box<TrieNode<'a>>>,
+    parent: Option<TrieNodeWeak<'a>>,
+    children: Vec<TrieNodeRef<'a>>,
 }
 
 impl<'a> TrieNode<'a> {
-    fn new(parent: Option<*mut TrieNode<'a>>, t: Term<'a>, postings: Option<Postings>) -> TrieNode<'a> {
-        TrieNode {
+    fn new(parent: Option<TrieNode<'a>>, t: Term<'a>, postings: Option<Postings>) -> TrieNode<'a> {
+        TrieNode(Rc::new(RefCell::new(_TrieNode {
             t: t,
             postings: postings,
-            parent: parent,
+            parent: parent.map(|p| Rc::downgrade(&p.0.clone())),
             children: Vec::new(),
+        })))
+    }
+
+    fn parent(&self) -> Option<TrieNode<'a>> {
+        match self.0.borrow().parent {
+            Some(ref weak_link) => Some(TrieNode(weak_link.upgrade().unwrap())),
+            None => None,
         }
     }
 
-    fn parent(&self) -> *mut TrieNode<'a> {
-        self.parent.unwrap()
+    fn parent_term_len(&self) -> usize {
+        let parent = self.parent().unwrap();
+        let pb = parent.borrow();
+        pb.t.term.len()
     }
 
-    unsafe fn add_child(&mut self, child: TrieNode<'a>) -> *mut TrieNode<'a> {
-        let mut newnode = Box::new(child);
-        let ret = &mut *newnode as *mut TrieNode;
-        self.children.push(newnode);
-        ret
+    fn add_child(&mut self, child: TrieNode<'a>) -> TrieNode<'a> {
+        let borrow = child.0.clone();
+        self.0.borrow_mut().children.push(child.0);
+        TrieNode(borrow)
+    }
+
+    fn borrow(&self) -> Ref<_TrieNode<'a>> {
+        self.0.borrow()
+    }
+
+    fn borrow_mut(&self) -> RefMut<_TrieNode<'a>> {
+        self.0.borrow_mut()
+    }
+
+    fn flush(&self) {
+        {
+            let self_borrow = self.borrow();
+            let prefix = self_borrow.t.term;
+            for child in self_borrow.children.iter() {
+                // TODO flush
+                let child_term = child.borrow().t.term;
+                let suffix = &child_term[prefix.len()..];
+                println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
+
+                // TODO enable this
+                if let Some(ref postings) = child.borrow().postings {
+                    let mut iter = postings.docs.iter();
+                    while let Some(posting) = iter.next() {
+                        //println!("TERM: {}, POSTING: {}", child_term, posting);
+                    }
+                }
+            }
+
+            // Need to store actual borrows first
+            let borrows = self_borrow.children.iter().map(|p| { p.borrow() }).collect::<Vec<_>>();
+            let postings_to_merge = borrows.iter().map(|p| { p.postings.as_ref().unwrap() }).collect::<Vec<_>>();
+            let prefix_postings = Postings::merge(&postings_to_merge[..]);
+        }
+
+        self.borrow_mut().children.clear();
+    }
+}
+
+impl<'a> Clone for TrieNode<'a> {
+    fn clone(&self) -> TrieNode<'a> {
+        TrieNode(self.0.clone())
     }
 }
