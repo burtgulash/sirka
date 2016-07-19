@@ -20,12 +20,18 @@ fn allocate_term<'a>(arena: &mut Vec<Box<Term<'a>>>, term: Term<'a>) -> *const T
     handle
 }
 
-pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, bk: &mut BKTree, mut docs: TermBuf, mut tfs: TermBuf, mut positions: TermBuf)
+pub struct TrieResult<'a> {
+    pub new_terms: Vec<Term<'a>>,
+    pub written_dict_positions: Vec<(TermId, usize)>,
+}
+
+pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, mut docs: TermBuf, mut tfs: TermBuf, mut positions: TermBuf) -> TrieResult<'a>
     where I: Iterator<Item=&'a Term<'a>>
 {
-    let root_term = Term{term: "", term_id: 0};
+    let mut written_positions = Vec::new();
     let mut new_terms = Vec::<Box<Term>>::new();
-    let root = TrieNode::new(None, &root_term, None);
+    let root_term = allocate_term(&mut new_terms, Term{term: "", term_id: 0});
+    let root = TrieNode::new(None, unsafe {&*root_term}, None);
 
     let mut last_node: TrieNode = root.clone();
     let mut parent: TrieNode;
@@ -105,6 +111,12 @@ pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, bk: &mut BKTree, mu
     while let Some(parent) = last_node.parent() {
         last_node = parent;
         last_node.flush();
+    }
+
+    TrieResult {
+        // unbox terms
+        new_terms: new_terms.into_iter().map(|t| *t).collect(),
+        written_dict_positions: written_positions,
     }
 }
 

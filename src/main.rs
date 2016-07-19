@@ -91,15 +91,22 @@ fn main() {
     let mut terms: Vec<Term> = h.iter().map(|(term, &term_id)| Term {term: term, term_id: term_id}).collect();
     terms.sort_by(|a, b| a.term.cmp(b.term));
 
+
+    println!("Creating Prefix Trie");
+    let tr = create_trie(term_serial, terms.iter(), docbuf, tfbuf, posbuf);
+
     println!("Creating BK Tree");
     let mut bk = BKTree::new();
     for term in terms.iter() {
         bk.insert_term(term);
     }
-    //bk.print();
 
-    println!("Creating Prefix Trie");
-    create_trie(term_serial, terms.iter(), &mut bk, docbuf, tfbuf, posbuf);
+    println!("Inserting prefixes into BK Tree");
+    for term in &tr.new_terms {
+        bk.insert_term(term);
+        // println!("Prefix: {}", term.term);
+    }
+    //bk.print();
 
 
 
