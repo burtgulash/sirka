@@ -30,8 +30,9 @@ pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, mut docs: TermBuf, 
 {
     let mut written_positions = Vec::new();
     let mut new_terms = Vec::<Box<Term>>::new();
-    let root_term = allocate_term(&mut new_terms, Term{term: "", term_id: 0});
-    let root = TrieNode::new(None, unsafe {&*root_term}, None);
+
+    let root_term = Term{term: "", term_id: 0};
+    let root = TrieNode::new(None, &root_term, None);
 
     let mut last_node: TrieNode = root.clone();
     let mut parent: TrieNode;
@@ -232,18 +233,20 @@ impl Postings {
     }
 }
 
-type TrieNodeRef<'a> = Rc<RefCell<_TrieNode<'a>>>;
-type TrieNodeWeak<'a> = Weak<RefCell<_TrieNode<'a>>>;
-struct TrieNode<'a>(TrieNodeRef<'a>);
-struct _TrieNode<'a> {
-    t: &'a Term<'a>,
+// 't: 'n means that terms ('t) can live longer than nodes ('n) It is needed so that root term can
+// be allocated in shorter lifetime than that of other terms.  No other reason
+type TrieNodeRef<'n, 't: 'n> = Rc<RefCell<_TrieNode<'n, 't>>>;
+type TrieNodeWeak<'n, 't: 'n> = Weak<RefCell<_TrieNode<'n, 't>>>;
+struct TrieNode<'n, 't: 'n>(TrieNodeRef<'n, 't>);
+struct _TrieNode<'n, 't: 'n> {
+    t: &'n Term<'t>,
     postings: Option<Postings>,
-    parent: Option<TrieNodeWeak<'a>>,
-    children: Vec<TrieNodeRef<'a>>,
+    parent: Option<TrieNodeWeak<'n, 't>>,
+    children: Vec<TrieNodeRef<'n, 't>>,
 }
 
-impl<'a> TrieNode<'a> {
-    fn new(parent: Option<TrieNode<'a>>, t: &'a Term<'a>, postings: Option<Postings>) -> TrieNode<'a> {
+impl<'n, 't: 'n> TrieNode<'n, 't> {
+    fn new(parent: Option<TrieNode<'n, 't>>, t: &'n Term<'t>, postings: Option<Postings>) -> TrieNode<'n, 't> {
         TrieNode(Rc::new(RefCell::new(_TrieNode {
             t: t,
             postings: postings,
@@ -252,7 +255,7 @@ impl<'a> TrieNode<'a> {
         })))
     }
 
-    fn parent(&self) -> Option<TrieNode<'a>> {
+    fn parent(&self) -> Option<TrieNode<'n, 't>> {
         match self.0.borrow().parent {
             Some(ref weak_link) => Some(TrieNode(weak_link.upgrade().unwrap())),
             None => None,
@@ -265,17 +268,17 @@ impl<'a> TrieNode<'a> {
         pb.t.term.len()
     }
 
-    fn add_child(&mut self, child: TrieNode<'a>) -> TrieNode<'a> {
+    fn add_child(&mut self, child: TrieNode<'n, 't>) -> TrieNode<'n, 't> {
         let borrow = child.0.clone();
         self.0.borrow_mut().children.push(child.0);
         TrieNode(borrow)
     }
 
-    fn borrow(&self) -> Ref<_TrieNode<'a>> {
+    fn borrow(&self) -> Ref<_TrieNode<'n, 't>> {
         self.0.borrow()
     }
 
-    fn borrow_mut(&self) -> RefMut<_TrieNode<'a>> {
+    fn borrow_mut(&self) -> RefMut<_TrieNode<'n, 't>> {
         self.0.borrow_mut()
     }
 
@@ -308,8 +311,8 @@ impl<'a> TrieNode<'a> {
     }
 }
 
-impl<'a> Clone for TrieNode<'a> {
-    fn clone(&self) -> TrieNode<'a> {
+impl<'n, 't: 'n> Clone for TrieNode<'n, 't> {
+    fn clone(&self) -> TrieNode<'n, 't> {
         TrieNode(self.0.clone())
     }
 }
