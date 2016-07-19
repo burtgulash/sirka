@@ -13,11 +13,19 @@ pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
         .fold(0, |acc, (x, _)| acc + x.len_utf8())
 }
 
+fn allocate_term<'a>(arena: &mut Vec<Box<Term<'a>>>, term: Term<'a>) -> *const Term<'a> {
+    let boxed_term = Box::new(term);
+    let handle = &*boxed_term as *const Term;
+    arena.push(boxed_term);
+    handle
+}
+
 pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, bk: &mut BKTree, mut docs: TermBuf, mut tfs: TermBuf, mut positions: TermBuf)
     where I: Iterator<Item=&'a Term<'a>>
 {
     let root_term = Term{term: "", term_id: 0};
-    let root = TrieNode::new(None, root_term, None);
+    let mut new_terms = Vec::<Box<Term>>::new();
+    let root = TrieNode::new(None, &root_term, None);
 
     let mut last_node: TrieNode = root.clone();
     let mut parent: TrieNode;
@@ -32,7 +40,7 @@ pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, bk: &mut BKTree, mu
             let parent_clone = parent.clone();
             last_node = parent.add_child(TrieNode::new(
                 Some(parent_clone),
-                current_term.clone(),
+                current_term,
                 Some(Postings {
                     docs: docs.get_termbuf(current_term.term_id).unwrap(),
                     tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
@@ -59,10 +67,10 @@ pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, bk: &mut BKTree, mu
             term_serial += 1;
             let last_term = last_node.borrow().t.term;
 
-            let new_term = Term {
+            let new_term: *const Term = allocate_term(&mut new_terms, Term {
                 term: &last_term[..cmp::min(last_term.len(), prefix_len)],
                 term_id: term_serial,
-            };
+            });
 
             let new_node = {
                 let _last_node_borrow = last_node.borrow();
@@ -70,7 +78,9 @@ pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, bk: &mut BKTree, mu
                 let postings_to_merge = vec![&child_postings, child2_postings];
                 TrieNode::new(
                     last_node.parent(),
-                    new_term,
+                    // UNSAFE: new_term will be alive, because 'new_terms' arena will be dropped
+                    // only after the trie is finished
+                    unsafe { &*new_term },
                     Some(Postings::merge(&postings_to_merge[..])),
                 )
             };
@@ -87,7 +97,7 @@ pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, bk: &mut BKTree, mu
         let parent_clone = parent.clone();
         last_node = parent.add_child(TrieNode::new(
             Some(parent_clone),
-            current_term.clone(),
+            current_term,
             Some(child_postings)
         ));
     }
@@ -214,14 +224,14 @@ type TrieNodeRef<'a> = Rc<RefCell<_TrieNode<'a>>>;
 type TrieNodeWeak<'a> = Weak<RefCell<_TrieNode<'a>>>;
 struct TrieNode<'a>(TrieNodeRef<'a>);
 struct _TrieNode<'a> {
-    t: Term<'a>,
+    t: &'a Term<'a>,
     postings: Option<Postings>,
     parent: Option<TrieNodeWeak<'a>>,
     children: Vec<TrieNodeRef<'a>>,
 }
 
 impl<'a> TrieNode<'a> {
-    fn new(parent: Option<TrieNode<'a>>, t: Term<'a>, postings: Option<Postings>) -> TrieNode<'a> {
+    fn new(parent: Option<TrieNode<'a>>, t: &'a Term<'a>, postings: Option<Postings>) -> TrieNode<'a> {
         TrieNode(Rc::new(RefCell::new(_TrieNode {
             t: t,
             postings: postings,

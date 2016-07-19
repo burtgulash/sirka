@@ -98,6 +98,7 @@ fn main() {
     }
     //bk.print();
 
+    println!("Creating Prefix Trie");
     create_trie(term_serial, terms.iter(), &mut bk, docbuf, tfbuf, posbuf);
 
 
