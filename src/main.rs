@@ -1,4 +1,4 @@
-mod indox;
+extern crate indox;
 
 use std::cmp::Ordering;
 use std::io::BufReader;
@@ -24,9 +24,9 @@ fn main() {
     let mut doc_serial: DocId = 0;
 
     let mut h = HashMap::<String, TermId>::new();
-    let mut docbuf = TermBuf::new();
-    let mut tfbuf = TermBuf::new();
-    let mut posbuf = TermBuf::new();
+    let mut docbufs = TermBuf::new();
+    let mut tfbufs = TermBuf::new();
+    let mut posbufs = TermBuf::new();
 
     for line in file.lines() {
         let l = line.unwrap();
@@ -42,16 +42,11 @@ fn main() {
         }
 
         forward_index.sort_by(|a, b| {
-            if a.0 > b.0 {
-                return Ordering::Greater;
-            } else if a.0 < b.0 {
-                return Ordering::Less;
-            } else if a.1 > b.1 {
-                return Ordering::Greater;
-            } else if a.1 < b.1 {
-                return Ordering::Less;
+            let c = a.0.cmp(&b.0);
+            if c == Ordering::Equal {
+                return a.1.cmp(&b.1);
             }
-            return Ordering::Equal;
+            c
         });
 
         let mut last_term_id = 0;
@@ -62,14 +57,14 @@ fn main() {
 
         macro_rules! ADD_DOC {
             () => {
-                docbuf.add_doc(last_term_id, doc_serial);
-                tfbuf.add_doc(last_term_id, tf);
+                docbufs.add_doc(last_term_id, doc_serial);
+                tfbufs.add_doc(last_term_id, tf);
                 control_tf += tf;
             }
         }
 
         for (term_id, position) in forward_index {
-            posbuf.add_doc(term_id, position);
+            posbufs.add_doc(term_id, position);
             if term_id == last_term_id {
                 tf += 1;
             } else {
@@ -84,16 +79,22 @@ fn main() {
         assert_eq!(control_tf as usize, len);
     }
 
-    // for buf in &docbuf.buffers {
+    // for buf in &docbufs.buffers {
     //     println!("{:?}", buf.as_ref().unwrap());
     // }
 
-    let mut terms: Vec<Term> = h.iter().map(|(term, &term_id)| Term {term: term, term_id: term_id}).collect();
-    terms.sort_by(|a, b| a.term.cmp(b.term));
+    let terms = {
+        let mut ts: Vec<Term> = h.iter().map(|(term, &term_id)| Term {term: term, term_id: term_id}).collect();
+        ts.sort_by(|a, b| a.term.cmp(b.term));
+        ts
+    };
 
+    //TODO
+//    let mut Postings = Zip::new(&docbufs, &tfbufs, &posbufs)
+//        .iter_mut()
 
     println!("Creating Prefix Trie");
-    let tr = create_trie(term_serial, terms.iter(), docbuf, tfbuf, posbuf);
+    let tr = create_trie(term_serial, terms.iter(), docbufs, tfbufs, posbufs);
 
     println!("Creating BK Tree");
     let mut bk = BKTree::new();

@@ -1,5 +1,5 @@
-use indox::*;
 use std::mem;
+use indexer::*;
 
 #[derive(Clone)]
 struct WideTerm<'a> {

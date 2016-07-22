@@ -1,9 +1,13 @@
-use indox::*;
 use std::mem;
+use indexer::*;
 
 pub struct TermBuf {
     pub buffers: Vec<Option<Vec<DocId>>>,
     max_term_id: TermId,
+}
+
+trait PostingsStore {
+    fn get_postings(term_id: TermId) -> Postings;
 }
 
 impl TermBuf {
