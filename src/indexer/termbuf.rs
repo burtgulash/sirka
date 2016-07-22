@@ -6,10 +6,6 @@ pub struct TermBuf {
     max_term_id: TermId,
 }
 
-trait PostingsStore {
-    fn get_postings(term_id: TermId) -> Postings;
-}
-
 impl TermBuf {
     pub fn new() -> TermBuf {
         TermBuf {
@@ -45,6 +41,23 @@ impl TermBuf {
         }
 
         let _ = mem::replace(&mut self.buffers[term_id as usize], Some(buf));
+    }
+}
+
+macro_rules! tryopt {
+    ($e:expr) => (match $e {
+        Some(value) => value,
+        None => return None,
+    })
+}
+
+impl<'a> PostingsStore for (&'a mut TermBuf, &'a mut TermBuf, &'a mut TermBuf) {
+    fn get_postings(&mut self, term_id: TermId) -> Option<Postings> {
+        Some(Postings {
+            docs: tryopt!(self.0.get_termbuf(term_id)),
+            tfs: tryopt!(self.1.get_termbuf(term_id)),
+            positions: tryopt!(self.2.get_termbuf(term_id)),
+        })
     }
 }
 

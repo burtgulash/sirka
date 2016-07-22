@@ -1,8 +1,12 @@
-use std::cmp::{self,Ordering};
+use std::cmp::Ordering;
 use std::iter::FromIterator;
 use std::collections::BinaryHeap;
 use indexer::*;
 
+
+pub trait PostingsStore {
+    fn get_postings(&mut self, term_id: TermId) -> Option<Postings>;
+}
 
 pub struct PostingsT<T> {
     pub docs: T,
