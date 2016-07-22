@@ -89,12 +89,10 @@ fn main() {
         ts
     };
 
-    //TODO
-//    let mut Postings = Zip::new(&docbufs, &tfbufs, &posbufs)
-//        .iter_mut()
+    let mut postings = (&mut docbufs, &mut tfbufs, &mut posbufs);
 
     println!("Creating Prefix Trie");
-    let tr = create_trie(term_serial, terms.iter(), docbufs, tfbufs, posbufs);
+    let tr = create_trie(term_serial, terms.iter(), &mut postings);
 
     println!("Creating BK Tree");
     let mut bk = BKTree::new();

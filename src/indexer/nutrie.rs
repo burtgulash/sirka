@@ -23,8 +23,9 @@ pub struct TrieResult<'a> {
     pub written_dict_positions: Vec<(TermId, usize)>,
 }
 
-pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, mut docs: TermBuf, mut tfs: TermBuf, mut positions: TermBuf) -> TrieResult<'a>
-    where I: Iterator<Item=&'a Term<'a>>
+pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store: &mut PS) -> TrieResult<'a>
+    where I: Iterator<Item=&'a Term<'a>>,
+          PS: PostingsStore
 {
     let mut written_positions = Vec::new();
     let mut new_terms = Vec::<Box<Term>>::new();
@@ -46,11 +47,7 @@ pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, mut docs: TermBuf, 
             last_node = parent.add_child(TrieNode::new(
                 Some(parent_clone),
                 current_term,
-                Some(Postings {
-                    docs: docs.get_termbuf(current_term.term_id).unwrap(),
-                    tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
-                    positions: positions.get_termbuf(current_term.term_id).unwrap(),
-                }),
+                postings_store.get_postings(current_term.term_id),
             ));
             continue;
         }
@@ -60,11 +57,7 @@ pub fn create_trie<'a, I>(mut term_serial: TermId, terms: I, mut docs: TermBuf, 
             last_node.flush();
         }
 
-        let child_postings = Postings {
-            docs: docs.get_termbuf(current_term.term_id).unwrap(),
-            tfs: tfs.get_termbuf(current_term.term_id).unwrap(),
-            positions: positions.get_termbuf(current_term.term_id).unwrap(),
-        };
+        let child_postings = postings_store.get_postings(current_term.term_id).unwrap();
 
         if prefix_len == last_node.parent_term_len() {
             parent = last_node.parent().unwrap();
