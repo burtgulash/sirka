@@ -1,3 +1,4 @@
+use std::str;
 use std::fs::File;
 use std::cmp;
 use std::rc::{Rc,Weak};
@@ -55,7 +56,7 @@ pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store:
 
         while prefix_len < last_node.parent_term_len() {
             last_node = last_node.parent().unwrap();
-            last_node.flush();
+            last_node.flush(dictout);
         }
 
         let child_postings = postings_store.get_postings(current_term.term_id).unwrap();
@@ -104,7 +105,7 @@ pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store:
 
     while let Some(parent) = last_node.parent() {
         last_node = parent;
-        last_node.flush();
+        last_node.flush(dictout);
     }
 
     TrieResult {
@@ -115,6 +116,27 @@ pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store:
 }
 
 
+struct TrieNodeHeader {
+    term_id: TermId,
+    near_terms_ptr: u32,
+    term_length: u8,
+    is_word: bool,
+    is_prefix: bool,
+    // NOTE [u8] is unsized type. It means consecutive bytes from this point on. The length is
+    // given by 'term_length' field of this struct
+    term: [u8],
+}
+
+impl TrieNodeHeader {
+    fn from_bytes<'a>(bs: &'a [u8]) -> &'a TrieNodeHeader {
+        unsafe { mem::transmute(bs) }
+    }
+
+    fn term(&self) -> &str {
+        // For checed cast use str::from_utf8().
+        unsafe {str::from_utf8_unchecked(&self.term)}
+    }
+}
 
 // 't: 'n means that terms ('t) can live longer than nodes ('n) It is needed so that root term can
 // be allocated in shorter lifetime than that of other terms.  No other reason
@@ -165,7 +187,7 @@ impl<'n> TrieNode<'n> {
         self.0.borrow_mut()
     }
 
-    fn flush(&self) {
+    fn flush(&self, dictout: &mut File) {
         {
             let self_borrow = self.borrow();
             let prefix = &self_borrow.t.term;
