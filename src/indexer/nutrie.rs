@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::cmp;
 use std::rc::{Rc,Weak};
 use std::cell::{RefCell,Ref,RefMut};
@@ -11,33 +12,33 @@ pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
         .fold(0, |acc, (x, _)| acc + x.len_utf8())
 }
 
-fn allocate_term<'a>(arena: &mut Vec<Box<Term<'a>>>, term: Term<'a>) -> *const Term<'a> {
+fn allocate_term(arena: &mut Vec<Box<Term>>, term: Term) -> *const Term {
     let boxed_term = Box::new(term);
     let handle = &*boxed_term as *const Term;
     arena.push(boxed_term);
     handle
 }
 
-pub struct TrieResult<'a> {
-    pub new_terms: Vec<Term<'a>>,
+pub struct TrieResult {
+    pub new_terms: Vec<Term>,
     pub written_dict_positions: Vec<(TermId, usize)>,
 }
 
-pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store: &mut PS) -> TrieResult<'a>
-    where I: Iterator<Item=&'a Term<'a>>,
+pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store: &mut PS, dictout: &mut File) -> TrieResult
+    where I: Iterator<Item=&'a Term>,
           PS: PostingsStore
 {
     let mut written_positions = Vec::new();
     let mut new_terms = Vec::<Box<Term>>::new();
 
-    let root_term = Term{term: "", term_id: 0};
+    let root_term = Term{term: "".into(), term_id: 0};
     let root = TrieNode::new(None, &root_term, None);
 
     let mut last_node: TrieNode = root.clone();
     let mut parent: TrieNode;
 
     for current_term in terms {
-        let prefix_len = get_common_prefix_len(last_node.borrow().t.term, current_term.term);
+        let prefix_len = get_common_prefix_len(&last_node.borrow().t.term, &current_term.term);
 
         // println!("IT {} {} {}", last_node.borrow().t.term, current_term.term, prefix_len);
 
@@ -63,12 +64,13 @@ pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store:
             parent = last_node.parent().unwrap();
         } else {
             term_serial += 1;
-            let last_term = last_node.borrow().t.term;
-
-            let new_term: *const Term = allocate_term(&mut new_terms, Term {
-                term: &last_term[..cmp::min(last_term.len(), prefix_len)],
-                term_id: term_serial,
-            });
+            let new_term: *const Term = {
+                let last_term = &last_node.borrow().t.term;
+                allocate_term(&mut new_terms, Term {
+                    term: last_term[..cmp::min(last_term.len(), prefix_len)].into(),
+                    term_id: term_serial,
+                })
+            };
 
             let new_node = {
                 let _last_node_borrow = last_node.borrow();
@@ -116,18 +118,18 @@ pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store:
 
 // 't: 'n means that terms ('t) can live longer than nodes ('n) It is needed so that root term can
 // be allocated in shorter lifetime than that of other terms.  No other reason
-type TrieNodeRef<'n, 't: 'n> = Rc<RefCell<_TrieNode<'n, 't>>>;
-type TrieNodeWeak<'n, 't: 'n> = Weak<RefCell<_TrieNode<'n, 't>>>;
-struct TrieNode<'n, 't: 'n>(TrieNodeRef<'n, 't>);
-struct _TrieNode<'n, 't: 'n> {
-    t: &'n Term<'t>,
+type TrieNodeRef<'n> = Rc<RefCell<_TrieNode<'n>>>;
+type TrieNodeWeak<'n> = Weak<RefCell<_TrieNode<'n>>>;
+struct TrieNode<'n>(TrieNodeRef<'n>);
+struct _TrieNode<'n> {
+    t: &'n Term,
     postings: Option<Postings>,
-    parent: Option<TrieNodeWeak<'n, 't>>,
-    children: Vec<TrieNodeRef<'n, 't>>,
+    parent: Option<TrieNodeWeak<'n>>,
+    children: Vec<TrieNodeRef<'n>>,
 }
 
-impl<'n, 't: 'n> TrieNode<'n, 't> {
-    fn new(parent: Option<TrieNode<'n, 't>>, t: &'n Term<'t>, postings: Option<Postings>) -> TrieNode<'n, 't> {
+impl<'n> TrieNode<'n> {
+    fn new(parent: Option<TrieNode<'n>>, t: &'n Term, postings: Option<Postings>) -> TrieNode<'n> {
         TrieNode(Rc::new(RefCell::new(_TrieNode {
             t: t,
             postings: postings,
@@ -136,7 +138,7 @@ impl<'n, 't: 'n> TrieNode<'n, 't> {
         })))
     }
 
-    fn parent(&self) -> Option<TrieNode<'n, 't>> {
+    fn parent(&self) -> Option<TrieNode<'n>> {
         match self.0.borrow().parent {
             Some(ref weak_link) => Some(TrieNode(weak_link.upgrade().unwrap())),
             None => None,
@@ -149,27 +151,27 @@ impl<'n, 't: 'n> TrieNode<'n, 't> {
         pb.t.term.len()
     }
 
-    fn add_child(&mut self, child: TrieNode<'n, 't>) -> TrieNode<'n, 't> {
+    fn add_child(&mut self, child: TrieNode<'n>) -> TrieNode<'n> {
         let borrow = child.0.clone();
         self.0.borrow_mut().children.push(child.0);
         TrieNode(borrow)
     }
 
-    fn borrow(&self) -> Ref<_TrieNode<'n, 't>> {
+    fn borrow(&self) -> Ref<_TrieNode<'n>> {
         self.0.borrow()
     }
 
-    fn borrow_mut(&self) -> RefMut<_TrieNode<'n, 't>> {
+    fn borrow_mut(&self) -> RefMut<_TrieNode<'n>> {
         self.0.borrow_mut()
     }
 
     fn flush(&self) {
         {
             let self_borrow = self.borrow();
-            let prefix = self_borrow.t.term;
+            let prefix = &self_borrow.t.term;
             for child in self_borrow.children.iter() {
                 // TODO flush
-                let child_term = child.borrow().t.term;
+                let child_term = &child.borrow().t.term;
                 let suffix = &child_term[prefix.len()..];
                 //println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
 
@@ -192,8 +194,8 @@ impl<'n, 't: 'n> TrieNode<'n, 't> {
     }
 }
 
-impl<'n, 't: 'n> Clone for TrieNode<'n, 't> {
-    fn clone(&self) -> TrieNode<'n, 't> {
+impl<'n> Clone for TrieNode<'n> {
+    fn clone(&self) -> TrieNode<'n> {
         TrieNode(self.0.clone())
     }
 }

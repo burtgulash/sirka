@@ -17,6 +17,7 @@ fn main() {
         std::process::exit(1);
     }
     let path = std::path::Path::new(&args[1]);
+    let files_prefix = args[2].to_owned();
     let f = File::open(&path).unwrap();
     let file = BufReader::new(&f);
 
@@ -82,17 +83,21 @@ fn main() {
     // for buf in &docbufs.buffers {
     //     println!("{:?}", buf.as_ref().unwrap());
     // }
+    //
 
     let terms = {
-        let mut ts: Vec<Term> = h.iter().map(|(term, &term_id)| Term {term: term, term_id: term_id}).collect();
-        ts.sort_by(|a, b| a.term.cmp(b.term));
+        let mut ts: Vec<Term> = h.drain().map(|(term, term_id)| Term {term: term, term_id: term_id}).collect();
+        ts.sort_by(|a, b| a.term.cmp(&b.term));
         ts
     };
+    drop(h);
 
     let mut postings = (&mut docbufs, &mut tfbufs, &mut posbufs);
 
+    let dict_file = format!("{}_{}", files_prefix, "dict");
+    let mut dictout = File::create(dict_file).unwrap();
     println!("Creating Prefix Trie");
-    let tr = create_trie(term_serial, terms.iter(), &mut postings);
+    let tr = create_trie(term_serial, terms.iter(), &mut postings, &mut dictout);
 
     println!("Creating BK Tree");
     let mut bk = BKTree::new();

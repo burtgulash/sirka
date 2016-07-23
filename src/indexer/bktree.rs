@@ -155,8 +155,8 @@ impl<'a> BKTree<'a> {
         self.size += 1;
     }
 
-    pub fn insert_term(&mut self, term: &Term<'a>) {
-        self.insert(term.term, term.term_id);
+    pub fn insert_term(&mut self, term: &'a Term) {
+        self.insert(&term.term, term.term_id);
     }
 
     pub fn find(&'a self, term: &str, maxd: usize) -> Vec<BKFindResult<'a>> {
