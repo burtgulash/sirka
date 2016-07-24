@@ -7,6 +7,7 @@ use std::cmp;
 use std::rc::{Rc,Weak};
 use std::cell::{RefCell,Ref,RefMut};
 use std::mem;
+use std::ops::Deref;
 
 use indexer::*;
 
@@ -116,8 +117,8 @@ pub fn create_trie<'a, I, PS, W>(
             current = fork_node.clone();
             mem::swap(&mut *current.borrow_mut(), &mut *parent.borrow_mut());
 
-            (&mut *current.borrow_mut()).parent = Some(Rc::downgrade(&parent.0));
-            parent.0.borrow_mut().children.push(fork_node.0);
+            current.set_parent(&parent);
+            parent.add_child(fork_node);
         }
 
         let parent_clone = parent.clone();
@@ -235,13 +236,18 @@ impl<'n> TrieNode<'n> {
             is_prefix: is_prefix,
             pointer_in_dictbuf: None,
             postings: postings,
-            parent: parent.map(|p| Rc::downgrade(&p.0.clone())),
+            parent: parent.map(|p| Rc::downgrade(&p.clone())),
             children: Vec::new(),
         })))
     }
 
+    fn set_parent(&mut self, parent: &TrieNodeRef<'n>) {
+        self.borrow_mut().parent = Some(Rc::downgrade(parent));
+        //(&mut *current.borrow_mut()).parent = Some(Rc::downgrade(&parent));
+    }
+
     fn parent(&self) -> Option<TrieNode<'n>> {
-        match self.0.borrow().parent {
+        match self.borrow().parent {
             Some(ref weak_link) => Some(TrieNode(weak_link.upgrade().unwrap())),
             None => None,
         }
@@ -251,16 +257,10 @@ impl<'n> TrieNode<'n> {
         self.borrow().t.term.len()
     }
 
-    fn parent_term_len(&self) -> usize {
-        let parent = self.parent().unwrap();
-        let pb = parent.borrow();
-        pb.t.term.len()
-    }
-
     fn add_child(&mut self, child: TrieNode<'n>) -> TrieNode<'n> {
-        let borrow = child.0.clone();
-        self.0.borrow_mut().children.push(child.0);
-        TrieNode(borrow)
+        let borrow = child.clone();
+        self.borrow_mut().children.push(child.0);
+        TrieNode(borrow.0)
     }
 
     fn borrow(&self) -> Ref<_TrieNode<'n>> {
@@ -269,6 +269,21 @@ impl<'n> TrieNode<'n> {
 
     fn borrow_mut(&self) -> RefMut<_TrieNode<'n>> {
         self.0.borrow_mut()
+    }
+
+    fn create_child_pointers(&self) -> Vec<usize> {
+        self.borrow().children.iter().map(|ch| {
+            ch.borrow().pointer_in_dictbuf.expect("This node must be written by now")
+        }).collect()
+    }
+
+    fn create_child_index(&self, prefix: &str) -> Vec<u8> {
+        self.borrow().children.iter().map(|ch| {
+            let ch_borrow = ch.borrow();
+            let suffix = &ch_borrow.t.term[prefix.len()..];
+            assert!(suffix.len() > 0);
+            suffix.as_bytes()[0] // output first letter (byte) after parent prefix
+        }).collect()
     }
 
     fn flush<W: Write>(&self, parent: &Self, mut dict_ptr: usize, mut postings_ptr: usize, dict_out: &mut W, docs_out: &mut W, tfs_out: &mut W, pos_out: &mut W) {
@@ -280,19 +295,12 @@ impl<'n> TrieNode<'n> {
 
             let mut toast_tmp = Vec::new();
             let mut postings_ptr = 0;
-            let header = TrieNodeHeader::from_trienode(&self.0, prefix.len(), postings_ptr, 0, &mut toast_tmp);
+            let header = TrieNodeHeader::from_trienode(&self, prefix.len(), postings_ptr, 0, &mut toast_tmp);
             dict_ptr += dict_out.write(header.to_bytes()).unwrap();
 
             if self_borrow.children.len() > 0 {
-                let child_pointers: Vec<usize> = self_borrow.children.iter().map(|ch| {
-                        ch.borrow().pointer_in_dictbuf.expect("This node must be written by now")
-                    }).collect();
-                let children_index: Vec<u8> = self_borrow.children.iter().map(|ch| {
-                        let ch_borrow = ch.borrow();
-                        let suffix = &ch_borrow.t.term[prefix.len()..];
-                        assert!(suffix.len() > 0);
-                        suffix.as_bytes()[0] // output first letter (byte) after parent prefix
-                    }).collect();
+                let child_pointers = self.create_child_pointers();
+                let children_index = self.create_child_index(prefix);
 
                 dict_out.write(&children_index[..]).unwrap();
                 dict_out.write(typed_to_bytes(&children_index[..])).unwrap();
@@ -327,5 +335,13 @@ impl<'n> TrieNode<'n> {
 impl<'n> Clone for TrieNode<'n> {
     fn clone(&self) -> TrieNode<'n> {
         TrieNode(self.0.clone())
+    }
+}
+
+impl<'n> Deref for TrieNode<'n> {
+    type Target = TrieNodeRef<'n>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
