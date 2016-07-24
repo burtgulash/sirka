@@ -1,3 +1,4 @@
+use std::u8;
 use std::str;
 use std::ptr;
 use std::slice;
@@ -36,7 +37,7 @@ pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store:
     let mut new_terms = Vec::<Box<Term>>::new();
 
     let root_term = Term{term: "".into(), term_id: 0};
-    let root = TrieNode::new(None, &root_term, None);
+    let root = TrieNode::new(None, &root_term, true, None);
 
     let mut last_node: TrieNode = root.clone();
     let mut parent: TrieNode;
@@ -52,6 +53,7 @@ pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store:
             last_node = parent.add_child(TrieNode::new(
                 Some(parent_clone),
                 current_term,
+                false,
                 postings_store.get_postings(current_term.term_id),
             ));
             continue;
@@ -85,6 +87,7 @@ pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store:
                     // UNSAFE: new_term will be alive, because 'new_terms' arena will be dropped
                     // only after the trie is finished
                     unsafe { &*new_term },
+                    true,
                     Some(Postings::merge(&postings_to_merge[..])),
                 )
             };
@@ -102,6 +105,7 @@ pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store:
         last_node = parent.add_child(TrieNode::new(
             Some(parent_clone),
             current_term,
+            false,
             Some(child_postings)
         ));
     }
@@ -157,6 +161,39 @@ impl TrieNodeHeader {
             str::from_utf8_unchecked(slice)
         }
     }
+
+    fn write_header<'n>(n: &TrieNodeRef<'n>, prefix_len: usize, postings_ptr: u32, mut toast_ptr: usize, toast: &mut Vec<u8>, dictout: &mut BufWriter<File>) {
+        let nb = n.borrow();
+        let mut term_bytes = [0u8; TERM_AVAILABLE_SIZE];
+        let term = &nb.t.term[prefix_len..];
+        let term_len = term.len();
+
+        // Handle longer strings by truncating
+        assert!(term_len < u8::max_value() as usize);
+
+
+        if term_len > TERM_AVAILABLE_SIZE {
+            println!("using toast! for {}|{}", &nb.t.term[..prefix_len], term);
+            toast.extend(term.as_bytes());
+            unsafe {
+                ptr::copy_nonoverlapping(mem::transmute(&toast_ptr), &mut term_bytes[TERM_AVAILABLE_SIZE - TERM_POINTER_SIZE], TERM_POINTER_SIZE);
+            }
+            toast_ptr += term_len;
+        } else {
+            term_bytes[..term_len].copy_from_slice(term.as_bytes());
+        }
+
+        let header = TrieNodeHeader {
+            postings_ptr: postings_ptr,
+            term_id: nb.t.term_id,
+            term_length: term_len as u8,
+            is_prefix: nb.is_prefix,
+            term: term_bytes,
+        };
+
+        dictout.write(header.to_bytes()).unwrap();
+    }
+
 }
 
 // 't: 'n means that terms ('t) can live longer than nodes ('n) It is needed so that root term can
@@ -166,15 +203,17 @@ type TrieNodeWeak<'n> = Weak<RefCell<_TrieNode<'n>>>;
 struct TrieNode<'n>(TrieNodeRef<'n>);
 struct _TrieNode<'n> {
     t: &'n Term,
+    is_prefix: bool,
     postings: Option<Postings>,
     parent: Option<TrieNodeWeak<'n>>,
     children: Vec<TrieNodeRef<'n>>,
 }
 
 impl<'n> TrieNode<'n> {
-    fn new(parent: Option<TrieNode<'n>>, t: &'n Term, postings: Option<Postings>) -> TrieNode<'n> {
+    fn new(parent: Option<TrieNode<'n>>, t: &'n Term, is_prefix: bool, postings: Option<Postings>) -> TrieNode<'n> {
         TrieNode(Rc::new(RefCell::new(_TrieNode {
             t: t,
+            is_prefix: is_prefix,
             postings: postings,
             parent: parent.map(|p| Rc::downgrade(&p.0.clone())),
             children: Vec::new(),
@@ -208,31 +247,6 @@ impl<'n> TrieNode<'n> {
         self.0.borrow_mut()
     }
 
-    fn write_header(&self, is_prefix: bool, postings_ptr: u32, mut toast_ptr: usize, toast: &mut [u8], dictout: &mut BufWriter<File>) {
-        let mut term_bytes = [0u8; TERM_AVAILABLE_SIZE];
-        let term_len = self.borrow().t.term.len();
-
-        if term_len > TERM_AVAILABLE_SIZE {
-            toast[toast_ptr .. toast_ptr + term_len].copy_from_slice(self.borrow().t.term.as_bytes());
-            unsafe {
-                ptr::copy_nonoverlapping(mem::transmute(&toast_ptr),&mut term_bytes[TERM_AVAILABLE_SIZE - TERM_POINTER_SIZE], TERM_POINTER_SIZE);
-            }
-            toast_ptr += term_len;
-        } else {
-            term_bytes[..].copy_from_slice(self.borrow().t.term.as_bytes());
-        }
-
-        let header = TrieNodeHeader {
-            postings_ptr: postings_ptr,
-            term_id: self.borrow().t.term_id,
-            term_length: term_len as u8,
-            is_prefix: is_prefix,
-            term: term_bytes,
-        };
-
-        dictout.write(header.to_bytes()).unwrap();
-    }
-
     fn flush(&self, dictout: &mut BufWriter<File>) {
         {
             let self_borrow = self.borrow();
@@ -243,7 +257,8 @@ impl<'n> TrieNode<'n> {
                 let suffix = &child_term[prefix.len()..];
                 //println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
 
-                // TODO self.write_header();
+                let mut toast_tmp = Vec::new();
+                TrieNodeHeader::write_header(child, prefix.len(), 0, 0, &mut toast_tmp, dictout);
 
                 // TODO enable this
                 if let Some(ref postings) = child.borrow().postings {
