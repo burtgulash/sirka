@@ -1,7 +1,7 @@
 extern crate indox;
 
 use std::cmp::Ordering;
-use std::io::BufReader;
+use std::io::{BufReader, BufWriter};
 use std::io::BufRead;
 use std::fs::File;
 use std::collections::HashMap;
@@ -17,7 +17,7 @@ fn main() {
         std::process::exit(1);
     }
     let path = std::path::Path::new(&args[1]);
-    let files_prefix = args[2].to_owned();
+    let output_files_prefix = args[2].to_owned();
     let f = File::open(&path).unwrap();
     let file = BufReader::new(&f);
 
@@ -94,10 +94,11 @@ fn main() {
 
     let mut postings = (&mut docbufs, &mut tfbufs, &mut posbufs);
 
-    let dict_file = format!("{}_{}", files_prefix, "dict");
+    let dict_file = format!("{}_{}", output_files_prefix, "dict");
     let mut dictout = File::create(dict_file).unwrap();
+    let mut dictout_buffered = BufWriter::new(dictout);
     println!("Creating Prefix Trie");
-    let tr = create_trie(term_serial, terms.iter(), &mut postings, &mut dictout);
+    let tr = create_trie(term_serial, terms.iter(), &mut postings, &mut dictout_buffered);
 
     println!("Creating BK Tree");
     let mut bk = BKTree::new();

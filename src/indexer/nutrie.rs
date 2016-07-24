@@ -1,4 +1,6 @@
 use std::str;
+use std::slice;
+use std::io::BufWriter;
 use std::fs::File;
 use std::cmp;
 use std::rc::{Rc,Weak};
@@ -25,7 +27,7 @@ pub struct TrieResult {
     pub written_dict_positions: Vec<(TermId, usize)>,
 }
 
-pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store: &mut PS, dictout: &mut File) -> TrieResult
+pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store: &mut PS, dictout: &mut BufWriter<File>) -> TrieResult
     where I: Iterator<Item=&'a Term>,
           PS: PostingsStore
 {
@@ -116,25 +118,43 @@ pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store:
 }
 
 
+const HEADER_SIZE: usize = 10; // size without 'term'
+const ALIGNED_SIZE: usize = 24;
+const TERM_AVAILABLE_SIZE: usize = ALIGNED_SIZE - HEADER_SIZE;
+const TERM_POINTER_SIZE: usize = 8;
+
+#[repr(packed)]
 struct TrieNodeHeader {
-    term_id: TermId,
-    near_terms_ptr: u32,
+    postings_ptr: u32, // DOCID
+    term_id: u32, // TERMID
     term_length: u8,
-    is_word: bool,
     is_prefix: bool,
-    // NOTE [u8] is unsized type. It means consecutive bytes from this point on. The length is
-    // given by 'term_length' field of this struct
-    term: [u8],
+    term: [u8; TERM_AVAILABLE_SIZE],
 }
 
 impl TrieNodeHeader {
     fn from_bytes<'a>(bs: &'a [u8]) -> &'a TrieNodeHeader {
-        unsafe { mem::transmute(bs) }
+        unsafe { mem::transmute(&bs[0]) }
     }
 
-    fn term(&self) -> &str {
-        // For checed cast use str::from_utf8().
-        unsafe {str::from_utf8_unchecked(&self.term)}
+    fn to_bytes(&self) -> &[u8] {
+        unsafe {
+            let self_ptr: *const u8 = mem::transmute(self);
+            slice::from_raw_parts(self_ptr, mem::size_of::<TrieNodeHeader>())
+        }
+    }
+
+    #[allow(dead_code)]
+    fn term<'a>(&self, toast: &'a [u8]) -> &'a str {
+        unsafe {
+            let slice = if self.term_length as usize > TERM_POINTER_SIZE {
+                let p: &usize = mem::transmute(&self.term[TERM_AVAILABLE_SIZE - TERM_POINTER_SIZE]);
+                slice::from_raw_parts(&toast[*p] as *const u8, self.term_length as usize)
+            } else {
+                slice::from_raw_parts(mem::transmute(&self.term), self.term_length as usize)
+            };
+            str::from_utf8_unchecked(slice)
+        }
     }
 }
 
@@ -187,7 +207,7 @@ impl<'n> TrieNode<'n> {
         self.0.borrow_mut()
     }
 
-    fn flush(&self, dictout: &mut File) {
+    fn flush(&self, dictout: &mut BufWriter<File>) {
         {
             let self_borrow = self.borrow();
             let prefix = &self_borrow.t.term;
@@ -211,6 +231,7 @@ impl<'n> TrieNode<'n> {
             let postings_to_merge = borrows.iter().map(|p| { p.postings.as_ref().unwrap() }).collect::<Vec<_>>();
             let prefix_postings = Postings::merge(&postings_to_merge[..]);
         }
+        // TODO assert children are sorted
 
         self.borrow_mut().children.clear();
     }
