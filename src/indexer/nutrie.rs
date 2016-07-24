@@ -59,9 +59,10 @@ pub fn create_trie<'a, I, PS, W>(
     let root_term = Term{term: "".into(), term_id: 0};
     let root1 = TrieNode::new(None, &root_term, true, None);
     let root2 = TrieNode::new(Some(root1.clone()), &root_term, true, None);
+    root1.clone().add_child(root2.clone());
 
-    let mut last_node: TrieNode = root1.clone();
-    let mut parent: TrieNode = root2.clone();
+    let mut parent: TrieNode = root1.clone();
+    let mut last_node: TrieNode = root2.clone();
 
     let mut dict_ptr = 0;
     let mut postings_ptr = 0;
@@ -70,7 +71,7 @@ pub fn create_trie<'a, I, PS, W>(
         let prefix_len = get_common_prefix_len(&last_node.borrow().t.term, &current_term.term);
         let child_postings = postings_store.get_postings(current_term.term_id);
 
-        // DEBUG println!("IT {} {} {}", last_node.borrow().t.term, current_term.term, prefix_len);
+        println!("IT {} {} {}", last_node.borrow().t.term, current_term.term, prefix_len);
 
         // align parent and last_node pointers
         while prefix_len < parent.term_len() {
@@ -82,6 +83,8 @@ pub fn create_trie<'a, I, PS, W>(
 
         if prefix_len >= last_node.term_len() {
             parent = last_node.clone();
+        } else if prefix_len == parent.term_len() {
+            last_node.flush(&parent, dict_ptr, postings_ptr, dict_out, docs_out, tfs_out, pos_out);
         } else if prefix_len > parent.term_len() {
             term_serial += 1;
             let new_term: *const Term = {
@@ -92,7 +95,7 @@ pub fn create_trie<'a, I, PS, W>(
                 })
             };
 
-            let new_node = {
+            let fork_node = {
                 let _last_node_borrow = last_node.borrow();
                 let ref child2_postings = _last_node_borrow.postings.as_ref().unwrap();
                 let postings_to_merge = vec![child_postings.as_ref().unwrap(), child2_postings];
@@ -106,13 +109,15 @@ pub fn create_trie<'a, I, PS, W>(
                 )
             };
 
+            last_node.flush(&fork_node, dict_ptr, postings_ptr, dict_out, docs_out, tfs_out, pos_out);
+
             parent = last_node.clone();
-            last_node = new_node.clone();
+            last_node = fork_node.clone();
             mem::swap(&mut *last_node.borrow_mut(), &mut *parent.borrow_mut());
 
             (&mut *last_node.borrow_mut()).parent = Some(Rc::downgrade(&parent.0));
             // *(last_node.0.borrow().parent.unwrap().upgrade().unwrap().borrow_mut()) = Some(parent);
-            parent.0.borrow_mut().children.push(new_node.0);
+            parent.0.borrow_mut().children.push(fork_node.0);
         }
 
         let parent_clone = parent.clone();
@@ -330,6 +335,7 @@ impl<'n> TrieNode<'n> {
             dict_ptr += dict_out.write(header.to_bytes()).unwrap();
 
             if self_borrow.children.len() > 0 {
+                println!("FLUSHING NODE WITH {} children, term: '{}', term_id: {}, len: {}", self_borrow.children.len(), self_borrow.t.term, self_borrow.t.term_id, self_borrow.t.term.len());
                 let child_pointers: Vec<usize> = self_borrow.children.iter().map(|ch| {
                         ch.borrow().pointer_in_dictbuf.expect("This node must be written by now")
                     }).collect();

@@ -41,11 +41,13 @@ fn main() {
 
         let mut forward_index = Vec::<(TermId, u32)>::new();
         for (position, s) in l.split("|").enumerate() {
-            let term_id = *h.entry(s.into()).or_insert_with(|| {
-                term_serial += 1;
-                term_serial
-            });
-            forward_index.push((term_id, position as u32));
+            if s.len() > 0 {
+                let term_id = *h.entry(s.into()).or_insert_with(|| {
+                    term_serial += 1;
+                    term_serial
+                });
+                forward_index.push((term_id, position as u32));
+            }
         }
 
         forward_index.sort_by(|a, b| {
