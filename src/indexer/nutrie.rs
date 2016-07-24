@@ -1,6 +1,7 @@
 use std::str;
+use std::ptr;
 use std::slice;
-use std::io::BufWriter;
+use std::io::{BufWriter,Write};
 use std::fs::File;
 use std::cmp;
 use std::rc::{Rc,Weak};
@@ -207,6 +208,31 @@ impl<'n> TrieNode<'n> {
         self.0.borrow_mut()
     }
 
+    fn write_header(&self, is_prefix: bool, postings_ptr: u32, mut toast_ptr: usize, toast: &mut [u8], dictout: &mut BufWriter<File>) {
+        let mut term_bytes = [0u8; TERM_AVAILABLE_SIZE];
+        let term_len = self.borrow().t.term.len();
+
+        if term_len > TERM_AVAILABLE_SIZE {
+            toast[toast_ptr .. toast_ptr + term_len].copy_from_slice(self.borrow().t.term.as_bytes());
+            unsafe {
+                ptr::copy_nonoverlapping(mem::transmute(&toast_ptr),&mut term_bytes[TERM_AVAILABLE_SIZE - TERM_POINTER_SIZE], TERM_POINTER_SIZE);
+            }
+            toast_ptr += term_len;
+        } else {
+            term_bytes[..].copy_from_slice(self.borrow().t.term.as_bytes());
+        }
+
+        let header = TrieNodeHeader {
+            postings_ptr: postings_ptr,
+            term_id: self.borrow().t.term_id,
+            term_length: term_len as u8,
+            is_prefix: is_prefix,
+            term: term_bytes,
+        };
+
+        dictout.write(header.to_bytes()).unwrap();
+    }
+
     fn flush(&self, dictout: &mut BufWriter<File>) {
         {
             let self_borrow = self.borrow();
@@ -216,6 +242,8 @@ impl<'n> TrieNode<'n> {
                 let child_term = &child.borrow().t.term;
                 let suffix = &child_term[prefix.len()..];
                 //println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
+
+                // TODO self.write_header();
 
                 // TODO enable this
                 if let Some(ref postings) = child.borrow().postings {
