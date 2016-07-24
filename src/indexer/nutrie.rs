@@ -148,7 +148,7 @@ pub fn create_trie<'a, I, PS, W>(
 }
 
 
-const HEADER_SIZE: usize = 10; // size without 'term'
+const HEADER_SIZE: usize = 11; // size without 'term'
 const ALIGNED_SIZE: usize = 24;
 const TERM_AVAILABLE_SIZE: usize = ALIGNED_SIZE - HEADER_SIZE;
 const TERM_POINTER_SIZE: usize = 8;
@@ -158,13 +158,14 @@ struct TrieNodeHeader {
     postings_ptr: u32, // DOCID
     term_id: u32, // TERMID
     term_length: u8,
+    num_children: u8,
     is_prefix: bool,
     term: [u8; TERM_AVAILABLE_SIZE],
 }
 
 impl TrieNodeHeader {
-    fn from_bytes<'a>(bs: &'a [u8]) -> &'a TrieNodeHeader {
-        unsafe { mem::transmute(&bs[0]) }
+    fn from_bytes<'a>(bs: *const u8) -> &'a TrieNodeHeader {
+        unsafe { mem::transmute(bs) }
     }
 
     fn to_bytes(&self) -> &[u8] {
@@ -184,6 +185,47 @@ impl TrieNodeHeader {
                 slice::from_raw_parts(mem::transmute(&self.term), self.term_length as usize)
             };
             str::from_utf8_unchecked(slice)
+        }
+    }
+
+    fn get_children_index(&self) -> &[u8] {
+        unsafe { slice::from_raw_parts((self as *const Self).offset(1) as *const u8, self.num_children as usize) }
+    }
+
+    fn get_child_pointers(&self) -> &[u32] {
+        unsafe {
+            let children_index = (self as *const Self).offset(1) as *const u8;
+            let child_pointers = children_index.offset(self.num_children as isize) as *const u32;
+            slice::from_raw_parts(child_pointers, self.num_children as usize)
+        }
+    }
+
+    // TODO self == root
+    fn find_term(&self, dictbuf: &[u8], toast: &[u8], find_nearest: bool, term: &str) -> Option<&Self> {
+        let mut cursor = self;
+        let mut cur_term = term;
+        loop {
+            let current_term = cursor.term(toast);
+            let skip = get_common_prefix_len(current_term, cur_term);
+            if skip < cur_term.len() {
+                if find_nearest {
+                    return Some(&cursor);
+                } else {
+                    return None;
+                }
+            } else if skip > cur_term.len() {
+                cur_term = &cur_term[skip..];
+                let children_index = cursor.get_children_index();
+                let first_letter = term.as_bytes()[0];
+                let child_index = match children_index.binary_search(&first_letter) {
+                    Ok(index) => index,
+                    Err(_) => return None,
+                };
+                let child_pointer = cursor.get_child_pointers()[child_index];
+                cursor = Self::from_bytes((&dictbuf[child_pointer as usize ..]).as_ptr());
+            } else {
+                return Some(&cursor);
+            }
         }
     }
 
@@ -211,6 +253,7 @@ impl TrieNodeHeader {
             postings_ptr: postings_ptr,
             term_id: nb.t.term_id,
             term_length: term_len as u8,
+            num_children: nb.children.len() as u8,
             is_prefix: nb.is_prefix,
             term: term_bytes,
         }
