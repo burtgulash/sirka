@@ -16,6 +16,18 @@ pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
         .fold(0, |acc, (x, _)| acc + x.len_utf8())
 }
 
+fn typed_to_bytes<T>(slice: &[T]) -> &[u8] {
+    unsafe {
+        slice::from_raw_parts(slice.as_ptr() as *const u8, slice.len() * mem::size_of::<T>())
+    }
+}
+
+fn bytes_to_typed<T>(buf: &[u8]) -> &[T] {
+    unsafe {
+        slice::from_raw_parts(buf.as_ptr() as *const T, buf.len() / mem::size_of::<T>())
+    }
+}
+
 fn allocate_term(arena: &mut Vec<Box<Term>>, term: Term) -> *const Term {
     let boxed_term = Box::new(term);
     let handle = &*boxed_term as *const Term;
@@ -45,38 +57,32 @@ pub fn create_trie<'a, I, PS, W>(
     let mut new_terms = Vec::<Box<Term>>::new();
 
     let root_term = Term{term: "".into(), term_id: 0};
-    let root = TrieNode::new(None, &root_term, true, None);
+    let root1 = TrieNode::new(None, &root_term, true, None);
+    let root2 = TrieNode::new(Some(root1.clone()), &root_term, true, None);
 
-    let mut last_node: TrieNode = root.clone();
-    let mut parent: TrieNode;
+    let mut last_node: TrieNode = root1.clone();
+    let mut parent: TrieNode = root2.clone();
+
+    let mut dict_ptr = 0;
+    let mut postings_ptr = 0;
 
     for current_term in terms {
         let prefix_len = get_common_prefix_len(&last_node.borrow().t.term, &current_term.term);
+        let child_postings = postings_store.get_postings(current_term.term_id);
 
-        // println!("IT {} {} {}", last_node.borrow().t.term, current_term.term, prefix_len);
+        // DEBUG println!("IT {} {} {}", last_node.borrow().t.term, current_term.term, prefix_len);
 
-        if prefix_len >= last_node.borrow().t.term.len() {
-            parent = last_node;
-            let parent_clone = parent.clone();
-            last_node = parent.add_child(TrieNode::new(
-                Some(parent_clone),
-                current_term,
-                false,
-                postings_store.get_postings(current_term.term_id),
-            ));
-            continue;
+        // align parent and last_node pointers
+        while prefix_len < parent.term_len() {
+            //let parent = last_node.parent().unwrap();
+            last_node.flush(&parent, dict_ptr, postings_ptr, dict_out, docs_out, tfs_out, pos_out);
+            last_node = parent.clone();
+            parent = parent.parent().unwrap();
         }
 
-        while prefix_len < last_node.parent_term_len() {
-            last_node = last_node.parent().unwrap();
-            last_node.flush(dict_out, docs_out, tfs_out, pos_out);
-        }
-
-        let child_postings = postings_store.get_postings(current_term.term_id).unwrap();
-
-        if prefix_len == last_node.parent_term_len() {
-            parent = last_node.parent().unwrap();
-        } else {
+        if prefix_len >= last_node.term_len() {
+            parent = last_node.clone();
+        } else if prefix_len > parent.term_len() {
             term_serial += 1;
             let new_term: *const Term = {
                 let last_term = &last_node.borrow().t.term;
@@ -89,7 +95,7 @@ pub fn create_trie<'a, I, PS, W>(
             let new_node = {
                 let _last_node_borrow = last_node.borrow();
                 let ref child2_postings = _last_node_borrow.postings.as_ref().unwrap();
-                let postings_to_merge = vec![&child_postings, child2_postings];
+                let postings_to_merge = vec![child_postings.as_ref().unwrap(), child2_postings];
                 TrieNode::new(
                     last_node.parent(),
                     // UNSAFE: new_term will be alive, because 'new_terms' arena will be dropped
@@ -100,7 +106,7 @@ pub fn create_trie<'a, I, PS, W>(
                 )
             };
 
-            parent = last_node;
+            parent = last_node.clone();
             last_node = new_node.clone();
             mem::swap(&mut *last_node.borrow_mut(), &mut *parent.borrow_mut());
 
@@ -114,13 +120,65 @@ pub fn create_trie<'a, I, PS, W>(
             Some(parent_clone),
             current_term,
             false,
-            Some(child_postings)
+            child_postings,
         ));
+
+        // while prefix_len < last_node.parent_term_len() {
+        //     let parent = last_node.parent().unwrap();
+        //     last_node.flush(parent, dict_ptr, postings_ptr, dict_out, docs_out, tfs_out, pos_out);
+        //     last_node = parent;
+        // }
+
+        //let child_postings = postings_store.get_postings(current_term.term_id).unwrap();
+
+        // if prefix_len == last_node.parent_term_len() {
+        //     parent = last_node.parent().unwrap();
+        // } else {
+        //     term_serial += 1;
+        //     let new_term: *const Term = {
+        //         let last_term = &last_node.borrow().t.term;
+        //         allocate_term(&mut new_terms, Term {
+        //             term: last_term[..cmp::min(last_term.len(), prefix_len)].into(),
+        //             term_id: term_serial,
+        //         })
+        //     };
+
+        //     let new_node = {
+        //         let _last_node_borrow = last_node.borrow();
+        //         let ref child2_postings = _last_node_borrow.postings.as_ref().unwrap();
+        //         let postings_to_merge = vec![&(child_postings.unwrap()), child2_postings];
+        //         TrieNode::new(
+        //             last_node.parent(),
+        //             // UNSAFE: new_term will be alive, because 'new_terms' arena will be dropped
+        //             // only after the trie is finished
+        //             unsafe { &*new_term },
+        //             true,
+        //             Some(Postings::merge(&postings_to_merge[..])),
+        //         )
+        //     };
+
+        //     parent = last_node;
+        //     last_node = new_node.clone();
+        //     mem::swap(&mut *last_node.borrow_mut(), &mut *parent.borrow_mut());
+
+        //     (&mut *last_node.borrow_mut()).parent = Some(Rc::downgrade(&parent.0));
+        //     // *(last_node.0.borrow().parent.unwrap().upgrade().unwrap().borrow_mut()) = Some(parent);
+        //     parent.0.borrow_mut().children.push(new_node.0);
+        // }
+
+        // let parent_clone = parent.clone();
+        // last_node = parent.add_child(TrieNode::new(
+        //     Some(parent_clone),
+        //     current_term,
+        //     false,
+        //     Some(child_postings)
+        // ));
     }
 
-    while let Some(parent) = last_node.parent() {
-        last_node = parent;
-        last_node.flush(dict_out, docs_out, tfs_out, pos_out);
+    while last_node.borrow().t.term_id != 0 {
+        last_node.flush(&parent, dict_ptr, postings_ptr, dict_out, docs_out, tfs_out, pos_out);
+        last_node = parent.clone();
+        parent = parent.parent().unwrap();
     }
 
     TrieResult {
@@ -210,6 +268,7 @@ struct TrieNode<'n>(TrieNodeRef<'n>);
 struct _TrieNode<'n> {
     t: &'n Term,
     is_prefix: bool,
+    pointer_in_dictbuf: Option<usize>,
     postings: Option<Postings>,
     parent: Option<TrieNodeWeak<'n>>,
     children: Vec<TrieNodeRef<'n>>,
@@ -220,6 +279,7 @@ impl<'n> TrieNode<'n> {
         TrieNode(Rc::new(RefCell::new(_TrieNode {
             t: t,
             is_prefix: is_prefix,
+            pointer_in_dictbuf: None,
             postings: postings,
             parent: parent.map(|p| Rc::downgrade(&p.0.clone())),
             children: Vec::new(),
@@ -231,6 +291,10 @@ impl<'n> TrieNode<'n> {
             Some(ref weak_link) => Some(TrieNode(weak_link.upgrade().unwrap())),
             None => None,
         }
+    }
+
+    fn term_len(&self) -> usize {
+        self.borrow().t.term.len()
     }
 
     fn parent_term_len(&self) -> usize {
@@ -253,36 +317,56 @@ impl<'n> TrieNode<'n> {
         self.0.borrow_mut()
     }
 
-    fn flush<W: Write>(&self, dict_out: &mut W, docs_out: &mut W, tfs_out: &mut W, pos_out: &mut W) {
-        {
+    fn flush<W: Write>(&self, parent: &Self, mut dict_ptr: usize, mut postings_ptr: usize, dict_out: &mut W, docs_out: &mut W, tfs_out: &mut W, pos_out: &mut W) {
+        let dict_position = dict_ptr;
+        let maybe_merged = {
             let self_borrow = self.borrow();
-            let prefix = &self_borrow.t.term;
-            for child in self_borrow.children.iter() {
-                // TODO flush
-                let child_term = &child.borrow().t.term;
-                let suffix = &child_term[prefix.len()..];
-                //println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
+            let parent_borrow = parent.borrow();
+            let prefix = &parent_borrow.t.term;
 
-                let mut toast_tmp = Vec::new();
-                let header = TrieNodeHeader::from_trienode(child, prefix.len(), 0, 0, &mut toast_tmp);
-                dict_out.write(header.to_bytes()).unwrap();
+            let mut toast_tmp = Vec::new();
+            let mut postings_ptr = 0;
+            let header = TrieNodeHeader::from_trienode(&self.0, prefix.len(), postings_ptr, 0, &mut toast_tmp);
+            dict_ptr += dict_out.write(header.to_bytes()).unwrap();
 
-                // TODO enable this
-                if let Some(ref postings) = child.borrow().postings {
-                    docs_out.write(unsafe {mem::transmute(&postings.docs[..])}).unwrap();
-                    tfs_out.write(unsafe {mem::transmute(&postings.tfs[..])}).unwrap();
-                    pos_out.write(unsafe {mem::transmute(&postings.positions[..])}).unwrap();
-                }
+            if self_borrow.children.len() > 0 {
+                let child_pointers: Vec<usize> = self_borrow.children.iter().map(|ch| {
+                        ch.borrow().pointer_in_dictbuf.expect("This node must be written by now")
+                    }).collect();
+                let children_index: Vec<u8> = self_borrow.children.iter().map(|ch| {
+                        let ch_borrow = ch.borrow();
+                        let suffix = &ch_borrow.t.term[prefix.len()..];
+                        assert!(suffix.len() > 0);
+                        suffix.as_bytes()[0] // output first letter (byte) after parent prefix
+                    }).collect();
+
+                dict_out.write(&children_index[..]).unwrap();
+                dict_out.write(typed_to_bytes(&children_index[..])).unwrap();
+
+                // Need to store actual borrows first
+                let borrows = self_borrow.children.iter().map(|p| { p.borrow() }).collect::<Vec<_>>();
+                let postings_to_merge = borrows.iter().map(|p| { p.postings.as_ref().unwrap() }).collect::<Vec<_>>();
+                Some(Postings::merge(&postings_to_merge[..]))
+            } else {
+                // else this node is a leaf
+                None
             }
-
-            // Need to store actual borrows first
-            let borrows = self_borrow.children.iter().map(|p| { p.borrow() }).collect::<Vec<_>>();
-            let postings_to_merge = borrows.iter().map(|p| { p.postings.as_ref().unwrap() }).collect::<Vec<_>>();
-            let prefix_postings = Postings::merge(&postings_to_merge[..]);
-        }
+        };
         // TODO assert children are sorted
 
-        self.borrow_mut().children.clear();
+        {
+            if let Some(postings) = maybe_merged {
+                self.borrow_mut().postings = Some(postings);
+            }
+            self.borrow_mut().children.clear();
+            self.borrow_mut().pointer_in_dictbuf = Some(dict_position);
+        }
+
+        let self_borrow = self.borrow();
+        let postings = self_borrow.postings.as_ref().unwrap();
+        postings_ptr += docs_out.write(typed_to_bytes(&postings.docs)).unwrap();
+        tfs_out.write(typed_to_bytes(&postings.tfs)).unwrap();
+        pos_out.write(typed_to_bytes(&postings.positions)).unwrap();
     }
 }
 
