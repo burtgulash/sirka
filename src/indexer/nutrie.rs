@@ -2,8 +2,7 @@ use std::u8;
 use std::str;
 use std::ptr;
 use std::slice;
-use std::io::{BufWriter,Write};
-use std::fs::File;
+use std::io::Write;
 use std::cmp;
 use std::rc::{Rc,Weak};
 use std::cell::{RefCell,Ref,RefMut};
@@ -29,9 +28,18 @@ pub struct TrieResult {
     pub written_dict_positions: Vec<(TermId, usize)>,
 }
 
-pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store: &mut PS, dictout: &mut BufWriter<File>) -> TrieResult
+pub fn create_trie<'a, I, PS, W>(
+    mut term_serial: TermId,
+    terms: I,
+    postings_store: &mut PS,
+    dict_out: &mut W,
+    docs_out: &mut W,
+    tfs_out:  &mut W,
+    pos_out:  &mut W,
+) -> TrieResult
     where I: Iterator<Item=&'a Term>,
-          PS: PostingsStore
+          PS: PostingsStore,
+          W: Write
 {
     let mut written_positions = Vec::new();
     let mut new_terms = Vec::<Box<Term>>::new();
@@ -61,7 +69,7 @@ pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store:
 
         while prefix_len < last_node.parent_term_len() {
             last_node = last_node.parent().unwrap();
-            last_node.flush(dictout);
+            last_node.flush(dict_out, docs_out, tfs_out, pos_out);
         }
 
         let child_postings = postings_store.get_postings(current_term.term_id).unwrap();
@@ -112,7 +120,7 @@ pub fn create_trie<'a, I, PS>(mut term_serial: TermId, terms: I, postings_store:
 
     while let Some(parent) = last_node.parent() {
         last_node = parent;
-        last_node.flush(dictout);
+        last_node.flush(dict_out, docs_out, tfs_out, pos_out);
     }
 
     TrieResult {
@@ -162,7 +170,7 @@ impl TrieNodeHeader {
         }
     }
 
-    fn write_header<'n>(n: &TrieNodeRef<'n>, prefix_len: usize, postings_ptr: u32, mut toast_ptr: usize, toast: &mut Vec<u8>, dictout: &mut BufWriter<File>) {
+    fn from_trienode<'n>(n: &TrieNodeRef<'n>, prefix_len: usize, postings_ptr: u32, mut toast_ptr: usize, toast: &mut Vec<u8>) -> TrieNodeHeader {
         let nb = n.borrow();
         let mut term_bytes = [0u8; TERM_AVAILABLE_SIZE];
         let term = &nb.t.term[prefix_len..];
@@ -183,15 +191,13 @@ impl TrieNodeHeader {
             term_bytes[..term_len].copy_from_slice(term.as_bytes());
         }
 
-        let header = TrieNodeHeader {
+        TrieNodeHeader {
             postings_ptr: postings_ptr,
             term_id: nb.t.term_id,
             term_length: term_len as u8,
             is_prefix: nb.is_prefix,
             term: term_bytes,
-        };
-
-        dictout.write(header.to_bytes()).unwrap();
+        }
     }
 
 }
@@ -247,7 +253,7 @@ impl<'n> TrieNode<'n> {
         self.0.borrow_mut()
     }
 
-    fn flush(&self, dictout: &mut BufWriter<File>) {
+    fn flush<W: Write>(&self, dict_out: &mut W, docs_out: &mut W, tfs_out: &mut W, pos_out: &mut W) {
         {
             let self_borrow = self.borrow();
             let prefix = &self_borrow.t.term;
@@ -258,14 +264,14 @@ impl<'n> TrieNode<'n> {
                 //println!("Flushing node {}|{}, term: {}", prefix, suffix, child_term);
 
                 let mut toast_tmp = Vec::new();
-                TrieNodeHeader::write_header(child, prefix.len(), 0, 0, &mut toast_tmp, dictout);
+                let header = TrieNodeHeader::from_trienode(child, prefix.len(), 0, 0, &mut toast_tmp);
+                dict_out.write(header.to_bytes()).unwrap();
 
                 // TODO enable this
                 if let Some(ref postings) = child.borrow().postings {
-                    let mut iter = postings.docs.iter();
-                    while let Some(posting) = iter.next() {
-                        //println!("TERM: {}, POSTING: {}", child_term, posting);
-                    }
+                    docs_out.write(unsafe {mem::transmute(&postings.docs[..])}).unwrap();
+                    tfs_out.write(unsafe {mem::transmute(&postings.tfs[..])}).unwrap();
+                    pos_out.write(unsafe {mem::transmute(&postings.positions[..])}).unwrap();
                 }
             }
 

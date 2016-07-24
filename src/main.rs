@@ -10,6 +10,12 @@ use indox::*;
 
 static USAGE: &'static str = "usage: index <input_file> <output_prefix>";
 
+fn create_writer(file_prefix: &str, filename: &str) -> BufWriter<File> {
+    let path = format!("{}_{}", file_prefix, filename);
+    let file = File::create(path).unwrap();
+    BufWriter::new(file)
+}
+
 fn main() {
     let args: Vec<_> = std::env::args().collect();
     if args.len() != 3 {
@@ -94,11 +100,13 @@ fn main() {
 
     let mut postings = (&mut docbufs, &mut tfbufs, &mut posbufs);
 
-    let dict_file = format!("{}_{}", output_files_prefix, "dict");
-    let mut dictout = File::create(dict_file).unwrap();
-    let mut dictout_buffered = BufWriter::new(dictout);
     println!("Creating Prefix Trie");
-    let tr = create_trie(term_serial, terms.iter(), &mut postings, &mut dictout_buffered);
+    let tr = create_trie(term_serial, terms.iter(), &mut postings,
+        &mut create_writer(&output_files_prefix, "dict"),
+        &mut create_writer(&output_files_prefix, "docs"),
+        &mut create_writer(&output_files_prefix, "tfs"),
+        &mut create_writer(&output_files_prefix, "positions"),
+    );
 
     println!("Creating BK Tree");
     let mut bk = BKTree::new();
