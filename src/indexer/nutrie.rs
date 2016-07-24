@@ -56,6 +56,7 @@ pub fn create_trie<'a, I, PS, W>(
 {
     let mut written_positions = Vec::new();
     let mut new_terms = Vec::<Box<Term>>::new();
+    let mut toast = Vec::<u8>::new();
 
     // Create 2 dummy roots - because you need 2 node pointers - parent and current
     let root_term = Term{term: "".into(), term_id: 0};
@@ -77,7 +78,7 @@ pub fn create_trie<'a, I, PS, W>(
 
         // align parent and current pointers
         while prefix_len < parent.term_len() {
-            current.flush(&parent, dict_ptr, postings_ptr, dict_out, docs_out, tfs_out, pos_out);
+            current.flush(&parent, &mut toast, dict_ptr, postings_ptr, dict_out, docs_out, tfs_out, pos_out);
             current = parent.clone();
             parent = parent.parent().unwrap();
         }
@@ -85,7 +86,7 @@ pub fn create_trie<'a, I, PS, W>(
         if prefix_len >= current.term_len() {
             parent = current.clone();
         } else if prefix_len == parent.term_len() {
-            current.flush(&parent, dict_ptr, postings_ptr, dict_out, docs_out, tfs_out, pos_out);
+            current.flush(&parent, &mut toast, dict_ptr, postings_ptr, dict_out, docs_out, tfs_out, pos_out);
         } else if prefix_len > parent.term_len() {
             term_serial += 1;
             let new_term: *const Term = {
@@ -111,7 +112,7 @@ pub fn create_trie<'a, I, PS, W>(
             };
 
             // Flush with fork_node as a new parent
-            current.flush(&fork_node, dict_ptr, postings_ptr, dict_out, docs_out, tfs_out, pos_out);
+            current.flush(&fork_node, &mut toast, dict_ptr, postings_ptr, dict_out, docs_out, tfs_out, pos_out);
 
             parent = current.clone();
             current = fork_node.clone();
@@ -131,10 +132,13 @@ pub fn create_trie<'a, I, PS, W>(
     }
 
     while current.borrow().t.term_id != 0 {
-        current.flush(&parent, dict_ptr, postings_ptr, dict_out, docs_out, tfs_out, pos_out);
+        current.flush(&parent, &mut toast, dict_ptr, postings_ptr, dict_out, docs_out, tfs_out, pos_out);
         current = parent.clone();
         parent = parent.parent().unwrap();
     }
+
+    // TODO get current dict length. This size - sizeof(trienodeheader) = ptr to root node
+    dict_out.write(&toast).unwrap();
 
     TrieResult {
         // unbox terms
@@ -183,7 +187,7 @@ impl TrieNodeHeader {
         }
     }
 
-    fn from_trienode<'n>(n: &TrieNodeRef<'n>, prefix_len: usize, postings_ptr: u32, mut toast_ptr: usize, toast: &mut Vec<u8>) -> TrieNodeHeader {
+    fn from_trienode<'n>(n: &TrieNodeRef<'n>, prefix_len: usize, postings_ptr: u32, toast: &mut Vec<u8>) -> TrieNodeHeader {
         let nb = n.borrow();
         let mut term_bytes = [0u8; TERM_AVAILABLE_SIZE];
         let term = &nb.t.term[prefix_len..];
@@ -195,11 +199,10 @@ impl TrieNodeHeader {
 
         if term_len > TERM_AVAILABLE_SIZE {
             println!("using toast! for {}|{}", &nb.t.term[..prefix_len], term);
-            toast.extend(term.as_bytes());
             unsafe {
-                ptr::copy_nonoverlapping(mem::transmute(&toast_ptr), &mut term_bytes[TERM_AVAILABLE_SIZE - TERM_POINTER_SIZE], TERM_POINTER_SIZE);
+                ptr::copy_nonoverlapping(mem::transmute(&toast.len()), &mut term_bytes[TERM_AVAILABLE_SIZE - TERM_POINTER_SIZE], TERM_POINTER_SIZE);
             }
-            toast_ptr += term_len;
+            toast.extend(term.as_bytes());
         } else {
             term_bytes[..term_len].copy_from_slice(term.as_bytes());
         }
@@ -286,16 +289,14 @@ impl<'n> TrieNode<'n> {
         }).collect()
     }
 
-    fn flush<W: Write>(&self, parent: &Self, mut dict_ptr: usize, mut postings_ptr: usize, dict_out: &mut W, docs_out: &mut W, tfs_out: &mut W, pos_out: &mut W) {
+    fn flush<W: Write>(&self, parent: &Self, toast: &mut Vec<u8>, mut dict_ptr: usize, mut postings_ptr: u32, dict_out: &mut W, docs_out: &mut W, tfs_out: &mut W, pos_out: &mut W) {
         let dict_position = dict_ptr;
         let maybe_merged = {
             let self_borrow = self.borrow();
             let parent_borrow = parent.borrow();
             let prefix = &parent_borrow.t.term;
 
-            let mut toast_tmp = Vec::new();
-            let mut postings_ptr = 0;
-            let header = TrieNodeHeader::from_trienode(&self, prefix.len(), postings_ptr, 0, &mut toast_tmp);
+            let header = TrieNodeHeader::from_trienode(&self, prefix.len(), postings_ptr, toast);
             dict_ptr += dict_out.write(header.to_bytes()).unwrap();
 
             if self_borrow.children.len() > 0 {
@@ -326,7 +327,7 @@ impl<'n> TrieNode<'n> {
 
         let self_borrow = self.borrow();
         let postings = self_borrow.postings.as_ref().unwrap();
-        postings_ptr += docs_out.write(typed_to_bytes(&postings.docs)).unwrap();
+        postings_ptr += docs_out.write(typed_to_bytes(&postings.docs)).unwrap() as u32;
         tfs_out.write(typed_to_bytes(&postings.tfs)).unwrap();
         pos_out.write(typed_to_bytes(&postings.positions)).unwrap();
     }
