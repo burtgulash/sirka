@@ -16,35 +16,22 @@ fn create_writer(file_prefix: &str, filename: &str) -> BufWriter<File> {
     BufWriter::new(file)
 }
 
-fn main() {
-    let args: Vec<_> = std::env::args().collect();
-    if args.len() != 3 {
-        println!("{}", USAGE);
-        std::process::exit(1);
-    }
-    let path = std::path::Path::new(&args[1]);
-    let output_files_prefix = args[2].to_owned();
-    let f = File::open(&path).unwrap();
-    let file = BufReader::new(&f);
-
-    let mut term_serial: TermId = 0;
-    let mut doc_serial: DocId = 0;
-
+fn process_docs(reader: BufReader<File>, term_serial: &mut TermId, doc_serial: &mut DocId, separator: &str) -> (Vec<Term>, (TermBuf, TermBuf, TermBuf)) {
     let mut h = HashMap::<String, TermId>::new();
     let mut docbufs = TermBuf::new();
     let mut tfbufs = TermBuf::new();
     let mut posbufs = TermBuf::new();
 
-    for line in file.lines() {
+    for line in reader.lines() {
         let l = line.unwrap();
-        doc_serial += 1;
+        *doc_serial += 1;
 
         let mut forward_index = Vec::<(TermId, u32)>::new();
-        for (position, s) in l.split("|").enumerate() {
+        for (position, s) in l.split(separator).enumerate() {
             if s.len() > 0 {
                 let term_id = *h.entry(s.into()).or_insert_with(|| {
-                    term_serial += 1;
-                    term_serial
+                    *term_serial += 1;
+                    *term_serial
                 });
                 forward_index.push((term_id, position as u32));
             }
@@ -66,7 +53,7 @@ fn main() {
 
         macro_rules! ADD_DOC {
             () => {
-                docbufs.add_doc(last_term_id, doc_serial);
+                docbufs.add_doc(last_term_id, *doc_serial);
                 tfbufs.add_doc(last_term_id, tf);
                 control_tf += tf;
             }
@@ -88,18 +75,25 @@ fn main() {
         assert_eq!(control_tf as usize, len);
     }
 
-    // for buf in &docbufs.buffers {
-    //     println!("{:?}", buf.as_ref().unwrap());
-    // }
-    //
+    let mut ts: Vec<Term> = h.drain().map(|(term, term_id)| Term {term: term, term_id: term_id}).collect();
+    ts.sort_by(|a, b| a.term.cmp(&b.term));
+    (ts, (docbufs, tfbufs, posbufs))
+}
 
-    let terms = {
-        let mut ts: Vec<Term> = h.drain().map(|(term, term_id)| Term {term: term, term_id: term_id}).collect();
-        ts.sort_by(|a, b| a.term.cmp(&b.term));
-        ts
-    };
-    drop(h);
+fn main() {
+    let args: Vec<_> = std::env::args().collect();
+    if args.len() != 3 {
+        println!("{}", USAGE);
+        std::process::exit(1);
+    }
+    let path = std::path::Path::new(&args[1]);
+    let output_files_prefix = args[2].to_owned();
+    let documents_reader = BufReader::new(File::open(&path).unwrap());
 
+    let mut term_serial: TermId = 0;
+    let mut doc_serial: DocId = 0;
+
+    let (terms, (mut docbufs, mut tfbufs, mut posbufs)) = process_docs(documents_reader, &mut term_serial, &mut doc_serial, "|");
     let mut postings = (&mut docbufs, &mut tfbufs, &mut posbufs);
 
     println!("Creating Prefix Trie");
