@@ -57,11 +57,10 @@ pub fn create_trie<'a, PS, W>(
     docs_out: &mut W,
     tfs_out:  &mut W,
     pos_out:  &mut W,
-) -> (Vec<WrittenTerm<'a>>, usize, usize)
+) -> (Vec<WrittenTerm<'a>>, usize, usize, usize)
     where PS: PostingsStore,
           W: Write
 {
-
     let mut new_terms = Vec::<WrittenTerm>::new();
 
     // Create 2 dummy roots - because you need 2 node pointers - parent and current
@@ -138,7 +137,9 @@ pub fn create_trie<'a, PS, W>(
         ));
     }
 
+    let mut root_ptr;
     loop {
+        root_ptr = dict_ptr;
         current.flush(&parent, &mut dict_ptr, &mut postings_ptr, dict_out, docs_out, tfs_out, pos_out);
         current = parent.clone();
         match parent.parent() {
@@ -152,7 +153,7 @@ pub fn create_trie<'a, PS, W>(
         dict_out.write(&t.term.as_bytes()).unwrap();
     }
 
-    (new_terms, dict_ptr, term_ptr)
+    (new_terms, dict_ptr, root_ptr, term_ptr)
 }
 
 // 't: 'n means that terms ('t) can live longer than nodes ('n) It is needed so that root term can
@@ -325,10 +326,7 @@ impl TrieNodeHeader {
     }
 
     fn to_bytes(&self) -> &[u8] {
-        unsafe {
-            let self_ptr: *const u8 = mem::transmute(self);
-            slice::from_raw_parts(self_ptr, mem::size_of::<TrieNodeHeader>())
-        }
+        unsafe { slice::from_raw_parts(self as *const _ as *const u8, mem::size_of::<TrieNodeHeader>()) }
     }
 
     fn term<'a>(&self, term_buffer: &'a [u8]) -> &'a str {
