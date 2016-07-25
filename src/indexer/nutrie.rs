@@ -65,11 +65,11 @@ pub fn create_trie<PS, W>(
     let mut dict_ptr = 0;
     let mut postings_ptr = 0;
 
-    for current_term in terms.iter() {
-        let prefix_len = get_common_prefix_len(&current.borrow().term, &current_term.term);
-        let child_postings = postings_store.get_postings(current_term.term_id);
+    for &Term{term: ref term, term_id: term_id} in terms.iter() {
+        let prefix_len = get_common_prefix_len(&current.borrow().term, term);
+        let child_postings = postings_store.get_postings(term_id);
 
-        println!("IT {} {} {}", current.borrow().term, current_term.term, prefix_len);
+        println!("IT {} {} {}", current.borrow().term, term, prefix_len);
 
         // align parent and current pointers
         while prefix_len < parent.term_len() {
@@ -115,10 +115,10 @@ pub fn create_trie<PS, W>(
         let parent_clone = parent.clone();
         current = parent.add_child(TrieNode::new(
             Some(parent_clone),
-            &current_term.term, current_term.term_id, Some(term_ptr), false,
+            term, term_id, Some(term_ptr), false,
             child_postings,
         ));
-        term_ptr += current_term.term.len();
+        term_ptr += term.len();
     }
 
     while current.borrow().term_id != 0 {
