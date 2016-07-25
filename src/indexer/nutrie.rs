@@ -130,11 +130,12 @@ pub fn create_trie<PS, W>(
     for t in terms.iter() {
         dict_out.write(&t.term.as_bytes()).unwrap();
     }
+    println!("{}", mem::size_of::<TrieNodeHeader>());
 }
 
 
 // TODO packed necessary?
-#[repr(packed)]
+#[repr(C)]
 struct TrieNodeHeader {
     postings_ptr: u32, // DOCID
     term_ptr: u32,
@@ -310,11 +311,11 @@ impl<'n> TrieNode<'n> {
             *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
 
             if self_borrow.children.len() > 0 {
-                let child_pointers = self.create_child_pointers();
                 let children_index = self.create_child_index(prefix);
+                let child_pointers = self.create_child_pointers();
 
                 dict_out.write(&children_index[..]).unwrap();
-                dict_out.write(typed_to_bytes(&children_index[..])).unwrap();
+                dict_out.write(typed_to_bytes(&child_pointers)).unwrap();
 
                 // Need to store actual borrows first
                 let borrows = self_borrow.children.iter().map(|p| { p.borrow() }).collect::<Vec<_>>();
