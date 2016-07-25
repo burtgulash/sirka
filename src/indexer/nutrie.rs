@@ -1,7 +1,7 @@
 use std::u8;
 use std::str;
 use std::slice;
-use std::io::Write;
+use std::io::{Write,Read};
 use std::cmp;
 use std::rc::{Rc,Weak};
 use std::cell::{RefCell,Ref,RefMut};
@@ -376,8 +376,20 @@ struct StaticTrie<'a> {
 }
 
 impl<'a> StaticTrie<'a> {
-    //fn new<R: Read>(reader: R) -> Self {
-    //}
+    fn read<R: Read>(reader: &mut R) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).unwrap();
+        bytes
+    }
+
+    fn new(bytes: &'a [u8], dict_size: usize, root_ptr: usize, terms_size: usize) -> Self {
+        let (trie, terms) = bytes.split_at(dict_size);
+        StaticTrie {
+            root: TrieNodeHeader::from_bytes(&trie[root_ptr] as *const _),
+            trie_buffer: trie,
+            term_buffer: terms,
+        }
+    }
 
     fn find_term(&self, dictbuf: &[u8], term_buffer: &[u8], find_nearest: bool, mut term: &str) -> Option<&TrieNodeHeader> {
         let mut cursor = self.root;
