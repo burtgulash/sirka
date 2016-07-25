@@ -1,7 +1,7 @@
 extern crate indox;
 
 use std::cmp::Ordering;
-use std::io::{BufReader, BufWriter};
+use std::io::{BufReader, BufWriter, Write};
 use std::io::BufRead;
 use std::fs::File;
 use std::collections::HashMap;
@@ -109,6 +109,17 @@ fn main() {
         &mut create_writer(&output_files_prefix, "tfs"),
         &mut create_writer(&output_files_prefix, "positions"),
     );
+
+    let meta = IndexMeta {
+        dict_size: dict_size as u64,
+        root_ptr: root_ptr as u64,
+        term_buffer_size: terms_size as u64,
+        docs_size: 0,
+        tfs_size: 0,
+        positions_size: 0,
+    };
+
+    create_writer(&output_files_prefix, "meta").write(&meta.to_bytes()).unwrap();
 
     //println!("Creating BK Tree");
     //let mut bk = BKTree::new();
