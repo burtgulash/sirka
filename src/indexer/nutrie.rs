@@ -28,10 +28,21 @@ fn bytes_to_typed<T>(buf: &[u8]) -> &[T] {
     }
 }
 
+#[derive(Clone)]
 pub struct WrittenTerm<'a> {
     term: &'a str,
     term_ptr: usize,
     term_id: TermId,
+}
+
+impl<'a> WrittenTerm<'a> {
+    fn new(term: &'a str, term_id: TermId, term_ptr: usize) -> WrittenTerm<'a> {
+        WrittenTerm {
+            term: term,
+            term_ptr: term_ptr,
+            term_id: term_id,
+        }
+    }
 }
 
 pub fn create_trie<'a, PS, W>(
@@ -50,8 +61,9 @@ pub fn create_trie<'a, PS, W>(
     let mut new_terms = Vec::<WrittenTerm>::new();
 
     // Create 2 dummy roots - because you need 2 node pointers - parent and current
-    let root1 = TrieNode::new(None, "", 0, 0, true, None);
-    let root2 = TrieNode::new(Some(root1.clone()), "", 0, 0, true, None);
+    let root_term = WrittenTerm::new("", 0, 0);
+    let root1 = TrieNode::new(None, root_term.clone(), true, None);
+    let root2 = TrieNode::new(Some(root1.clone()), root_term, true, None);
     root1.clone().add_child(root2.clone());
 
     let mut parent: TrieNode = root1.clone();
@@ -61,44 +73,40 @@ pub fn create_trie<'a, PS, W>(
     let mut dict_ptr = 0;
     let mut postings_ptr = 0;
 
-    for &Term{term: ref term, term_id: term_id} in terms.iter() {
-        let prefix_len = get_common_prefix_len(&current.borrow().term, term);
+    for &Term{ref term, term_id} in terms.iter() {
+        let prefix_len = get_common_prefix_len(current.term(), term);
         let child_postings = postings_store.get_postings(term_id);
 
-        println!("IT {} {} {}", current.borrow().term, term, prefix_len);
+        println!("IT {} {} {}", current.term(), term, prefix_len);
 
         // align parent and current pointers
-        while prefix_len < parent.term_len() {
+        while prefix_len < parent.term().len() {
             current.flush(&parent, &mut dict_ptr, &mut postings_ptr, dict_out, docs_out, tfs_out, pos_out);
             current = parent.clone();
             parent = parent.parent().unwrap();
         }
 
-        if prefix_len >= current.term_len() {
+        if prefix_len >= current.term().len() {
             parent = current.clone();
-        } else if prefix_len == parent.term_len() {
+        } else if prefix_len == parent.term().len() {
             current.flush(&parent, &mut dict_ptr, &mut postings_ptr, dict_out, docs_out, tfs_out, pos_out);
-        } else if prefix_len > parent.term_len() {
-            let parent_term_ptr = current.borrow().term_ptr;
+        } else if prefix_len > parent.term().len() {
+            //let parent_term_ptr = current.borrow().term_ptr;
+            term_serial += 1;
             let new_term = {
-                let last_term = &current.borrow().term;
-                &last_term[.. cmp::min(last_term.len(), prefix_len)]
+                let last_term = current.term();
+                let nt = &last_term[.. cmp::min(last_term.len(), prefix_len)];
+                WrittenTerm::new(nt, term_serial, current.term_ptr())
             };
 
-            new_terms.push(WrittenTerm {
-                term: new_term,
-                term_id: term_serial,
-                term_ptr: parent_term_ptr,
-            });
-
-            term_serial += 1;
+            new_terms.push(new_term.clone());
             let fork_node = {
                 let _current_borrow = current.borrow();
                 let ref child2_postings = _current_borrow.postings.as_ref().unwrap();
                 let postings_to_merge = vec![child_postings.as_ref().unwrap(), child2_postings];
                 TrieNode::new(
                     current.parent(),
-                    new_term, term_serial, parent_term_ptr, true,
+                    new_term, true,
                     Some(Postings::merge(&postings_to_merge[..])),
                 )
             };
@@ -114,21 +122,19 @@ pub fn create_trie<'a, PS, W>(
             parent.add_child(fork_node);
         }
 
+        let new_term = WrittenTerm::new(term, term_id, term_ptr);
+        new_terms.push(new_term.clone());
+        term_ptr += term.len();
+
         let parent_clone = parent.clone();
         current = parent.add_child(TrieNode::new(
             Some(parent_clone),
-            term, term_id, term_ptr, false,
+            new_term, false,
             child_postings,
         ));
-        new_terms.push(WrittenTerm {
-            term: term,
-            term_id: term_id,
-            term_ptr: term_ptr,
-        });
-        term_ptr += term.len();
     }
 
-    while current.borrow().term_id != 0 {
+    while current.term_id() != 0 {
         current.flush(&parent, &mut dict_ptr, &mut postings_ptr, dict_out, docs_out, tfs_out, pos_out);
         current = parent.clone();
         parent = parent.parent().unwrap();
@@ -214,9 +220,8 @@ impl TrieNodeHeader {
     }
 
     fn from_trienode<'n>(n: &TrieNodeRef<'n>, prefix_len: usize, postings_ptr: u32) -> TrieNodeHeader {
-        let nb = n.borrow();
-        let term = &nb.term[prefix_len..];
-        let term_ptr = nb.term_ptr + prefix_len;
+        let term = &n.borrow().t.term[prefix_len..];
+        let term_ptr = n.borrow().t.term_ptr + prefix_len;
 
         // TODO Handle longer strings by truncating
         assert!(term.len() < u8::max_value() as usize);
@@ -224,10 +229,10 @@ impl TrieNodeHeader {
         TrieNodeHeader {
             postings_ptr: postings_ptr,
             term_ptr: term_ptr as u32,
-            term_id: nb.term_id,
+            term_id: n.borrow().t.term_id,
             term_length: term.len() as u8,
-            num_children: nb.children.len() as u8,
-            is_prefix: nb.is_prefix,
+            num_children: n.borrow().children.len() as u8,
+            is_prefix: n.borrow().is_prefix,
         }
     }
 
@@ -239,9 +244,7 @@ type TrieNodeRef<'n> = Rc<RefCell<_TrieNode<'n>>>;
 type TrieNodeWeak<'n> = Weak<RefCell<_TrieNode<'n>>>;
 struct TrieNode<'n>(TrieNodeRef<'n>);
 struct _TrieNode<'n> {
-    term: &'n str,
-    term_id: TermId,
-    term_ptr: usize,
+    t: WrittenTerm<'n>,
     is_prefix: bool,
     pointer_in_dictbuf: Option<usize>,
     postings: Option<Postings>,
@@ -250,11 +253,9 @@ struct _TrieNode<'n> {
 }
 
 impl<'n> TrieNode<'n> {
-    fn new(parent: Option<TrieNode<'n>>, term: &'n str, term_id: TermId, term_ptr: usize, is_prefix: bool, postings: Option<Postings>) -> TrieNode<'n> {
+    fn new(parent: Option<TrieNode<'n>>, t: WrittenTerm<'n>, is_prefix: bool, postings: Option<Postings>) -> TrieNode<'n> {
         TrieNode(Rc::new(RefCell::new(_TrieNode {
-            term: term,
-            term_id: term_id,
-            term_ptr: term_ptr,
+            t: t,
             is_prefix: is_prefix,
             pointer_in_dictbuf: None,
             postings: postings,
@@ -275,8 +276,16 @@ impl<'n> TrieNode<'n> {
         }
     }
 
-    fn term_len(&self) -> usize {
-        self.borrow().term.len()
+    fn term_id(&self) -> TermId {
+        self.borrow().t.term_id
+    }
+
+    fn term_ptr(&self) -> usize {
+        self.borrow().t.term_ptr
+    }
+
+    fn term(&self) -> &'n str {
+        &self.borrow().t.term
     }
 
     fn add_child(&mut self, child: TrieNode<'n>) -> TrieNode<'n> {
@@ -302,7 +311,7 @@ impl<'n> TrieNode<'n> {
     fn create_child_index(&self, prefix: &str) -> Vec<u8> {
         self.borrow().children.iter().map(|ch| {
             let ch_borrow = ch.borrow();
-            let suffix = &ch_borrow.term[prefix.len()..];
+            let suffix = &ch_borrow.t.term[prefix.len()..];
             assert!(suffix.len() > 0);
             suffix.as_bytes()[0] // output first letter (byte) after parent prefix
         }).collect()
@@ -312,8 +321,7 @@ impl<'n> TrieNode<'n> {
         let dict_position = *dict_ptr;
         let maybe_merged = {
             let self_borrow = self.borrow();
-            let parent_borrow = parent.borrow();
-            let prefix = &parent_borrow.term;
+            let prefix = parent.term();
 
             let header = TrieNodeHeader::from_trienode(&self, prefix.len(), *postings_ptr);
             *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
