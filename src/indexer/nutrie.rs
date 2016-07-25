@@ -57,7 +57,7 @@ pub fn create_trie<'a, PS, W>(
     docs_out: &mut W,
     tfs_out:  &mut W,
     pos_out:  &mut W,
-) -> Vec<WrittenTerm<'a>>
+) -> (Vec<WrittenTerm<'a>>, usize, usize)
     where PS: PostingsStore,
           W: Write
 {
@@ -138,17 +138,21 @@ pub fn create_trie<'a, PS, W>(
         ));
     }
 
-    while current.term_id() != 0 {
+    loop {
         current.flush(&parent, &mut dict_ptr, &mut postings_ptr, dict_out, docs_out, tfs_out, pos_out);
         current = parent.clone();
-        parent = parent.parent().unwrap();
+        match parent.parent() {
+            Some(node) => parent = node,
+            None => break,
+        };
     }
+    assert!(current.parent().is_none());
 
     for t in terms.iter() {
         dict_out.write(&t.term.as_bytes()).unwrap();
     }
 
-    new_terms
+    (new_terms, dict_ptr, term_ptr)
 }
 
 // 't: 'n means that terms ('t) can live longer than nodes ('n) It is needed so that root term can
@@ -252,6 +256,8 @@ impl<'n> TrieNode<'n> {
 
 
             if self_borrow.children.len() > 0 {
+                println!("flushed node with {} children: term: '{}'", self_borrow.children.len(), self.term());
+
                 let children_index = self.create_child_index(prefix);
                 let child_pointers = self.create_child_pointers();
 
