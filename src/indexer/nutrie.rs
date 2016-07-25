@@ -28,6 +28,10 @@ fn bytes_to_typed<T>(buf: &[u8]) -> &[T] {
     }
 }
 
+fn align_to(n: usize, alignment: usize) -> usize {
+    (alignment - 1) - (n + alignment - 1) % alignment
+}
+
 #[derive(Clone)]
 pub struct WrittenTerm<'a> {
     term: &'a str,
@@ -77,7 +81,7 @@ pub fn create_trie<'a, PS, W>(
         let prefix_len = get_common_prefix_len(current.term(), term);
         let child_postings = postings_store.get_postings(term_id);
 
-        println!("IT {} {} {}", current.term(), term, prefix_len);
+        // println!("IT {} {} {}", current.term(), term, prefix_len);
 
         // align parent and current pointers
         while prefix_len < parent.term().len() {
@@ -145,97 +149,6 @@ pub fn create_trie<'a, PS, W>(
     }
 
     new_terms
-}
-
-
-// TODO packed necessary?
-#[repr(C)]
-struct TrieNodeHeader {
-    postings_ptr: u32, // DOCID
-    term_ptr: u32,
-    term_id: u32, // TERMID
-    term_length: u8,
-    num_children: u8,
-    is_prefix: bool,
-}
-
-impl TrieNodeHeader {
-    fn from_bytes<'a>(bs: *const u8) -> &'a TrieNodeHeader {
-        unsafe { mem::transmute(bs) }
-    }
-
-    fn to_bytes(&self) -> &[u8] {
-        unsafe {
-            let self_ptr: *const u8 = mem::transmute(self);
-            slice::from_raw_parts(self_ptr, mem::size_of::<TrieNodeHeader>())
-        }
-    }
-
-    fn term<'a>(&self, term_buffer: &'a [u8]) -> &'a str {
-        unsafe {
-            let slice = slice::from_raw_parts(&term_buffer[self.term_ptr as usize] as *const u8, self.term_length as usize);
-            str::from_utf8_unchecked(slice)
-        }
-    }
-
-    fn get_children_index(&self) -> &[u8] {
-        unsafe { slice::from_raw_parts((self as *const Self).offset(1) as *const u8, self.num_children as usize) }
-    }
-
-    fn get_child_pointers(&self) -> &[u32] {
-        unsafe {
-            let children_index = (self as *const Self).offset(1) as *const u8;
-            let child_pointers = children_index.offset(self.num_children as isize) as *const u32;
-            slice::from_raw_parts(child_pointers, self.num_children as usize)
-        }
-    }
-
-    // TODO self == root
-    fn find_term(&self, dictbuf: &[u8], term_buffer: &[u8], find_nearest: bool, term: &str) -> Option<&Self> {
-        let mut cursor = self;
-        let mut cur_term = term;
-        loop {
-            let current_term = cursor.term(term_buffer);
-            let skip = get_common_prefix_len(current_term, cur_term);
-            if skip < cur_term.len() {
-                if find_nearest {
-                    return Some(&cursor);
-                } else {
-                    return None;
-                }
-            } else if skip > cur_term.len() {
-                cur_term = &cur_term[skip..];
-                let children_index = cursor.get_children_index();
-                let first_letter = term.as_bytes()[0];
-                let child_index = match children_index.binary_search(&first_letter) {
-                    Ok(index) => index,
-                    Err(_) => return None,
-                };
-                let child_pointer = cursor.get_child_pointers()[child_index];
-                cursor = Self::from_bytes((&dictbuf[child_pointer as usize ..]).as_ptr());
-            } else {
-                return Some(&cursor);
-            }
-        }
-    }
-
-    fn from_trienode<'n>(n: &TrieNodeRef<'n>, prefix_len: usize, postings_ptr: u32) -> TrieNodeHeader {
-        let term = &n.borrow().t.term[prefix_len..];
-        let term_ptr = n.borrow().t.term_ptr + prefix_len;
-
-        // TODO Handle longer strings by truncating
-        assert!(term.len() < u8::max_value() as usize);
-
-        TrieNodeHeader {
-            postings_ptr: postings_ptr,
-            term_ptr: term_ptr as u32,
-            term_id: n.borrow().t.term_id,
-            term_length: term.len() as u8,
-            num_children: n.borrow().children.len() as u8,
-            is_prefix: n.borrow().is_prefix,
-        }
-    }
-
 }
 
 // 't: 'n means that terms ('t) can live longer than nodes ('n) It is needed so that root term can
@@ -323,15 +236,29 @@ impl<'n> TrieNode<'n> {
             let self_borrow = self.borrow();
             let prefix = parent.term();
 
+            macro_rules! ALIGN {
+                ($out:expr, $ptr:expr, $align_boundary:expr) => {{
+                    let align_buf = 0usize;
+                    let alignment = align_to(*$ptr, $align_boundary);
+                    let align_slice = unsafe { slice::from_raw_parts(&align_buf as *const usize as *const u8, alignment) };
+                    // println!("aligned by {} bytes", align_slice.len());
+                    *$ptr += $out.write(&align_slice).unwrap()
+                }}
+            }
+
             let header = TrieNodeHeader::from_trienode(&self, prefix.len(), *postings_ptr);
+            ALIGN!(dict_out, dict_ptr, mem::align_of::<TrieNodeHeader>());
             *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
+
 
             if self_borrow.children.len() > 0 {
                 let children_index = self.create_child_index(prefix);
                 let child_pointers = self.create_child_pointers();
 
-                dict_out.write(&children_index[..]).unwrap();
-                dict_out.write(typed_to_bytes(&child_pointers)).unwrap();
+                *dict_ptr += dict_out.write(&children_index[..]).unwrap();
+                ALIGN!(dict_out, dict_ptr, mem::align_of_val(&child_pointers[0]));
+
+                *dict_ptr += dict_out.write(typed_to_bytes(&child_pointers)).unwrap();
 
                 // Need to store actual borrows first
                 let borrows = self_borrow.children.iter().map(|p| { p.borrow() }).collect::<Vec<_>>();
@@ -371,5 +298,105 @@ impl<'n> Deref for TrieNode<'n> {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+
+// TODO packed necessary?
+#[repr(C)]
+struct TrieNodeHeader {
+    postings_ptr: u32, // DOCID
+    term_ptr: u32,
+    term_id: u32, // TERMID
+    term_length: u8,
+    num_children: u8,
+    is_prefix: bool,
+}
+
+impl TrieNodeHeader {
+    fn from_bytes<'a>(bs: *const u8) -> &'a TrieNodeHeader {
+        unsafe { mem::transmute(bs) }
+    }
+
+    fn to_bytes(&self) -> &[u8] {
+        unsafe {
+            let self_ptr: *const u8 = mem::transmute(self);
+            slice::from_raw_parts(self_ptr, mem::size_of::<TrieNodeHeader>())
+        }
+    }
+
+    fn term<'a>(&self, term_buffer: &'a [u8]) -> &'a str {
+        unsafe {
+            let slice = slice::from_raw_parts(&term_buffer[self.term_ptr as usize] as *const u8, self.term_length as usize);
+            str::from_utf8_unchecked(slice)
+        }
+    }
+
+    fn get_children_index(&self) -> &[u8] {
+        unsafe { slice::from_raw_parts((self as *const Self).offset(1) as *const u8, self.num_children as usize) }
+    }
+
+    fn get_child_pointers(&self) -> &[u32] {
+        unsafe {
+            let children_index = (self as *const Self).offset(1) as *const u8;
+            let child_pointers = children_index.offset(self.num_children as isize) as *const u32;
+            slice::from_raw_parts(child_pointers, self.num_children as usize)
+        }
+    }
+
+    fn from_trienode<'n>(n: &TrieNodeRef<'n>, prefix_len: usize, postings_ptr: u32) -> TrieNodeHeader {
+        let term = &n.borrow().t.term[prefix_len..];
+        let term_ptr = n.borrow().t.term_ptr + prefix_len;
+
+        // TODO Handle longer strings by truncating
+        assert!(term.len() < u8::max_value() as usize);
+
+        TrieNodeHeader {
+            postings_ptr: postings_ptr,
+            term_ptr: term_ptr as u32,
+            term_id: n.borrow().t.term_id,
+            term_length: term.len() as u8,
+            num_children: n.borrow().children.len() as u8,
+            is_prefix: n.borrow().is_prefix,
+        }
+    }
+
+}
+
+struct StaticTrie<'a> {
+    root: &'a TrieNodeHeader,
+    trie_buffer: &'a [u8],
+    term_buffer: &'a [u8],
+}
+
+impl<'a> StaticTrie<'a> {
+    //fn new<R: Read>(reader: R) -> Self {
+    //}
+
+    fn find_term(&self, dictbuf: &[u8], term_buffer: &[u8], find_nearest: bool, mut term: &str) -> Option<&TrieNodeHeader> {
+        let mut cursor = self.root;
+        loop {
+            let current_term = cursor.term(term_buffer);
+            let skip = get_common_prefix_len(current_term, term);
+            if skip < term.len() {
+                if find_nearest {
+                    return Some(&cursor);
+                } else {
+                    return None;
+                }
+            } else if skip > term.len() {
+                term = &term[skip..];
+                let children_index = cursor.get_children_index();
+                let first_letter = term.as_bytes()[0];
+                let child_index = match children_index.binary_search(&first_letter) {
+                    Ok(index) => index,
+                    Err(_) => return None,
+                };
+                let child_pointer = cursor.get_child_pointers()[child_index];
+                cursor = TrieNodeHeader::from_bytes((&dictbuf[child_pointer as usize ..]).as_ptr());
+            } else {
+                return Some(&cursor);
+            }
+        }
     }
 }
