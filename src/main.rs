@@ -103,24 +103,24 @@ fn main() {
     let mut postings = (&mut docbufs, &mut tfbufs, &mut posbufs);
 
     println!("Creating Prefix Trie");
-    let tr = create_trie(term_serial, terms.iter(), &mut postings,
+    create_trie(term_serial, terms.iter(), &mut postings,
         &mut create_writer(&output_files_prefix, "dict"),
         &mut create_writer(&output_files_prefix, "docs"),
         &mut create_writer(&output_files_prefix, "tfs"),
         &mut create_writer(&output_files_prefix, "positions"),
     );
 
-    println!("Creating BK Tree");
-    let mut bk = BKTree::new();
-    for term in terms.iter() {
-        bk.insert_term(term);
-    }
+    //println!("Creating BK Tree");
+    //let mut bk = BKTree::new();
+    //for term in terms.iter() {
+    //    bk.insert_term(term);
+    //}
 
-    println!("Inserting prefixes into BK Tree");
-    for term in &tr.new_terms {
-        bk.insert_term(term);
-        // println!("Prefix: {}", term.term);
-    }
+    //println!("Inserting prefixes into BK Tree");
+    //for term in &tr.new_terms {
+    //    bk.insert_term(term);
+    //    // println!("Prefix: {}", term.term);
+    //}
     //bk.print();
 
 
