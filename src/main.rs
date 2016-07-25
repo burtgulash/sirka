@@ -103,7 +103,7 @@ fn main() {
     let mut postings = (&mut docbufs, &mut tfbufs, &mut posbufs);
 
     println!("Creating Prefix Trie");
-    create_trie(term_serial, terms.iter(), &mut postings,
+    create_trie(term_serial, &terms, &mut postings,
         &mut create_writer(&output_files_prefix, "dict"),
         &mut create_writer(&output_files_prefix, "docs"),
         &mut create_writer(&output_files_prefix, "tfs"),

@@ -40,17 +40,16 @@ fn allocate_term(arena: &mut Vec<Box<Term>>, term: Term) -> *const Term {
 //     pub written_dict_positions: Vec<(TermId, usize)>,
 // }
 
-pub fn create_trie<'a, I, PS, W>(
+pub fn create_trie<PS, W>(
     mut term_serial: TermId,
-    terms: I,
+    terms: &[Term],
     postings_store: &mut PS,
     dict_out: &mut W,
     docs_out: &mut W,
     tfs_out:  &mut W,
     pos_out:  &mut W,
 )
-    where I: Iterator<Item=&'a Term>,
-          PS: PostingsStore,
+    where PS: PostingsStore,
           W: Write
 {
 
@@ -66,7 +65,7 @@ pub fn create_trie<'a, I, PS, W>(
     let mut dict_ptr = 0;
     let mut postings_ptr = 0;
 
-    for current_term in terms {
+    for current_term in terms.iter() {
         let prefix_len = get_common_prefix_len(&current.borrow().term, &current_term.term);
         let child_postings = postings_store.get_postings(current_term.term_id);
 
@@ -128,8 +127,9 @@ pub fn create_trie<'a, I, PS, W>(
         parent = parent.parent().unwrap();
     }
 
-    // TODO get current dict length. This size - sizeof(trienodeheader) = ptr to root node
-    //dict_out.write(&term_buffer).unwrap();
+    for t in terms.iter() {
+        dict_out.write(&t.term.as_bytes()).unwrap();
+    }
 }
 
 
