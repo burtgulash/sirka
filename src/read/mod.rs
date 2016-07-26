@@ -1,3 +1,3 @@
-pub use self::nutrie_read::StaticTrie;
+pub use self::nutrie::StaticTrie;
 
-pub mod nutrie_read;
+pub mod nutrie;
