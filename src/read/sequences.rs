@@ -1,4 +1,4 @@
-use types::*;
+use types::{DocId,Sequence,SequenceSlider};
 
 impl<'a> Sequence<'a> for &'a [DocId] {
     type Slider = SliceSequenceSlider<'a>;

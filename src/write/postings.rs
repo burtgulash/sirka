@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::iter::FromIterator;
 use std::collections::BinaryHeap;
-use types::*;
+use types::{TermId,DocId};
 
 
 pub trait PostingsStore {

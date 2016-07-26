@@ -1,5 +1,5 @@
 use std::mem;
-use types::*;
+use types::{TermId,Term};
 
 #[derive(Clone)]
 struct WideTerm<'a> {

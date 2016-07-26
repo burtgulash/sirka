@@ -1,7 +1,10 @@
-pub use meta::*;
-pub use docseq::*;
+pub use self::meta::IndexMeta;
+pub use self::docseq::{Sequence,SequenceSlider};
+pub use self::nutrie::TrieNodeHeader;
+
 pub mod meta;
 pub mod docseq;
+pub mod nutrie;
 
 
 pub type TermId = u32;
