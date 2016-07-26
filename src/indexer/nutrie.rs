@@ -220,9 +220,9 @@ impl<'n> TrieNode<'n> {
         self.0.borrow_mut()
     }
 
-    fn create_child_pointers(&self) -> Vec<usize> {
+    fn create_child_pointers(&self) -> Vec<u32> {
         self.borrow().children.iter().map(|ch| {
-            ch.borrow().pointer_in_dictbuf.expect("This node must be written by now")
+            ch.borrow().pointer_in_dictbuf.expect("This node must be written by now") as u32
         }).collect()
     }
 
@@ -230,6 +230,7 @@ impl<'n> TrieNode<'n> {
         self.borrow().children.iter().map(|ch| {
             let ch_borrow = ch.borrow();
             let suffix = &ch_borrow.t.term[prefix.len()..];
+            // println!("prefix='{}',   term='{}', suffix='{}'", prefix, ch_borrow.t.term, suffix);
             assert!(suffix.len() > 0);
             suffix.as_bytes()[0] // output first letter (byte) after parent prefix
         }).collect()
@@ -252,14 +253,15 @@ impl<'n> TrieNode<'n> {
             }
 
             let header = TrieNodeHeader::from_trienode(&self, prefix.len(), *postings_ptr);
-            ALIGN!(dict_out, dict_ptr, mem::align_of::<TrieNodeHeader>());
+            //ALIGN!(dict_out, dict_ptr, mem::align_of::<TrieNodeHeader>());
             *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
 
 
             if self_borrow.children.len() > 0 {
-                println!("flushed node with {} children: term: '{}'", self_borrow.children.len(), self.term());
+                // println!("flushed node with {} children: term: '{}'", self_borrow.children.len(), self.term());
 
-                let children_index = self.create_child_index(prefix);
+                let children_index = self.create_child_index(self.term());
+                // TODO assert that children_index and child_pointers are in ascending order
                 let child_pointers = self.create_child_pointers();
 
                 *dict_ptr += dict_out.write(&children_index[..]).unwrap();
@@ -311,6 +313,7 @@ impl<'n> Deref for TrieNode<'n> {
 
 // TODO packed necessary?
 #[repr(C)]
+#[derive(Debug)]
 pub struct TrieNodeHeader {
     postings_ptr: u32, // DOCID
     term_ptr: u32,
@@ -356,6 +359,7 @@ impl TrieNodeHeader {
         // TODO Handle longer strings by truncating
         assert!(term.len() < u8::max_value() as usize);
 
+        println!("Term length: {}", term.len());
         TrieNodeHeader {
             postings_ptr: postings_ptr,
             term_ptr: term_ptr as u32,
@@ -393,27 +397,36 @@ impl<'a> StaticTrie<'a> {
     pub fn find_term(&self, mut term: &str, find_nearest: bool) -> Option<&TrieNodeHeader> {
         let mut cursor = self.root;
         loop {
+            unsafe {println!("termbuffer: {:?}", str::from_utf8_unchecked(&self.term_buffer[cursor.term_ptr as usize ..cursor.term_ptr as usize + 30]));}
             let current_term = cursor.term(self.term_buffer);
+            println!("looking for: '{}', cursor term: '{}', len: {}", term, current_term, cursor.term_length);
+            println!("CURSOR: {:?}", cursor);
             let skip = get_common_prefix_len(current_term, term);
             if skip < term.len() {
+                term = &term[skip..];
+                let children_index = cursor.get_children_index();
+                println!("children index: {:?}", children_index);
+                let first_letter = term.as_bytes()[0];
+                println!("first letter: '{}'", first_letter as char);
+                let child_index = match children_index.binary_search(&first_letter) {
+                    Ok(index) => index,
+                    Err(_) => return None,
+                };
+                let child_pointers = cursor.get_child_pointers();
+                println!("child pointers: {:?}", cursor.get_child_pointers());
+                let child_pointer = child_pointers[child_index] as usize;
+                println!("child at pointer {}!", child_pointer);
+                cursor = TrieNodeHeader::from_bytes((&self.trie_buffer[child_pointer..]).as_ptr());
+            } else if skip > term.len() {
                 if find_nearest {
                     return Some(&cursor);
                 } else {
                     return None;
                 }
-            } else if skip > term.len() {
-                term = &term[skip..];
-                let children_index = cursor.get_children_index();
-                let first_letter = term.as_bytes()[0];
-                let child_index = match children_index.binary_search(&first_letter) {
-                    Ok(index) => index,
-                    Err(_) => return None,
-                };
-                let child_pointer = cursor.get_child_pointers()[child_index];
-                cursor = TrieNodeHeader::from_bytes((&self.trie_buffer[child_pointer as usize ..]).as_ptr());
             } else {
                 return Some(&cursor);
             }
+            println!("");
         }
     }
 }
