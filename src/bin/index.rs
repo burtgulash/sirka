@@ -3,15 +3,15 @@ extern crate indox;
 use std::cmp::Ordering;
 use std::io::{BufReader, BufWriter, Write};
 use std::io::BufRead;
-use std::fs::File;
+use std::fs::{self,File};
 use std::collections::HashMap;
 
 use indox::*;
 
 static USAGE: &'static str = "usage: index <input_file> <output_prefix>";
 
-fn create_writer(file_prefix: &str, filename: &str) -> BufWriter<File> {
-    let path = format!("{}_{}", file_prefix, filename);
+fn create_writer(directory: &str, filename: &str) -> BufWriter<File> {
+    let path = format!("{}/{}", directory, filename);
     let file = File::create(path).unwrap();
     BufWriter::new(file)
 }
@@ -87,8 +87,10 @@ fn main() {
         std::process::exit(1);
     }
     let path = std::path::Path::new(&args[1]);
-    let output_files_prefix = args[2].to_owned();
+    let dirname = args[2].to_owned();
     let documents_reader = BufReader::new(File::open(&path).unwrap());
+
+    fs::create_dir_all(&dirname).unwrap();
 
     let mut term_serial: TermId = 0;
     let mut doc_serial: DocId = 0;
@@ -98,10 +100,10 @@ fn main() {
 
     println!("Creating Prefix Trie");
     let (written_terms, dict_size, root_ptr, terms_size) = create_trie(term_serial, &terms, &mut postings,
-        &mut create_writer(&output_files_prefix, "dict"),
-        &mut create_writer(&output_files_prefix, "docs"),
-        &mut create_writer(&output_files_prefix, "tfs"),
-        &mut create_writer(&output_files_prefix, "positions"),
+        &mut create_writer(&dirname, "dict"),
+        &mut create_writer(&dirname, "docs"),
+        &mut create_writer(&dirname, "tfs"),
+        &mut create_writer(&dirname, "positions"),
     );
 
     let meta = IndexMeta {
@@ -113,7 +115,7 @@ fn main() {
         positions_size: 0,
     };
 
-    create_writer(&output_files_prefix, "meta").write(&meta.to_bytes()).unwrap();
+    create_writer(&dirname, "meta").write(&meta.to_bytes()).unwrap();
 
     //println!("Creating BK Tree");
     //let mut bk = BKTree::new();
