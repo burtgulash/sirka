@@ -311,7 +311,7 @@ impl<'n> Deref for TrieNode<'n> {
 
 // TODO packed necessary?
 #[repr(C)]
-struct TrieNodeHeader {
+pub struct TrieNodeHeader {
     postings_ptr: u32, // DOCID
     term_ptr: u32,
     term_id: u32, // TERMID
@@ -367,20 +367,20 @@ impl TrieNodeHeader {
 
 }
 
-struct StaticTrie<'a> {
+pub struct StaticTrie<'a> {
     root: &'a TrieNodeHeader,
     trie_buffer: &'a [u8],
     term_buffer: &'a [u8],
 }
 
 impl<'a> StaticTrie<'a> {
-    fn read<R: Read>(reader: &mut R) -> Vec<u8> {
+    pub fn read<R: Read>(reader: &mut R) -> Vec<u8> {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).unwrap();
         bytes
     }
 
-    fn new(bytes: &'a [u8], dict_size: usize, root_ptr: usize, terms_size: usize) -> Self {
+    pub fn new(bytes: &'a [u8], dict_size: usize, root_ptr: usize, terms_size: usize) -> Self {
         let (trie, terms) = bytes.split_at(dict_size);
         StaticTrie {
             root: TrieNodeHeader::from_bytes(&trie[root_ptr] as *const _),
@@ -389,10 +389,10 @@ impl<'a> StaticTrie<'a> {
         }
     }
 
-    fn find_term(&self, dictbuf: &[u8], term_buffer: &[u8], find_nearest: bool, mut term: &str) -> Option<&TrieNodeHeader> {
+    pub fn find_term(&self, mut term: &str, find_nearest: bool) -> Option<&TrieNodeHeader> {
         let mut cursor = self.root;
         loop {
-            let current_term = cursor.term(term_buffer);
+            let current_term = cursor.term(self.term_buffer);
             let skip = get_common_prefix_len(current_term, term);
             if skip < term.len() {
                 if find_nearest {
@@ -409,7 +409,7 @@ impl<'a> StaticTrie<'a> {
                     Err(_) => return None,
                 };
                 let child_pointer = cursor.get_child_pointers()[child_index];
-                cursor = TrieNodeHeader::from_bytes((&dictbuf[child_pointer as usize ..]).as_ptr());
+                cursor = TrieNodeHeader::from_bytes((&self.trie_buffer[child_pointer as usize ..]).as_ptr());
             } else {
                 return Some(&cursor);
             }

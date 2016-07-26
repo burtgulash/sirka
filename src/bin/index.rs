@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use indox::*;
 
-static USAGE: &'static str = "usage: index <input_file> <output_prefix>";
+static USAGE: &'static str = "usage: index <inputfile> <outputdir>";
 
 fn create_writer(directory: &str, filename: &str) -> BufWriter<File> {
     let path = format!("{}/{}", directory, filename);

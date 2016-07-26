@@ -1,6 +1,7 @@
 use std::mem;
 use std::slice;
 
+#[derive(Debug)]
 pub struct IndexMeta {
     pub dict_size: u64,
     pub root_ptr: u64,
