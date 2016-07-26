@@ -1,4 +1,4 @@
-use std::u8;
+use std::u32;
 use std::str;
 use std::slice;
 use std::io::{Write,Read};
@@ -14,6 +14,10 @@ pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
     a.chars().zip(b.chars())
         .take_while(|&(ac, bc)| { ac == bc })
         .fold(0, |acc, (x, _)| acc + x.len_utf8())
+}
+
+fn first_letter(s: &str) -> u32 {
+    s.chars().take(1).next().unwrap() as u32
 }
 
 fn typed_to_bytes<T>(slice: &[T]) -> &[u8] {
@@ -226,13 +230,13 @@ impl<'n> TrieNode<'n> {
         }).collect()
     }
 
-    fn create_child_index(&self, prefix: &str) -> Vec<u8> {
+    fn create_child_index(&self, prefix: &str) -> Vec<u32> {
         self.borrow().children.iter().map(|ch| {
             let ch_borrow = ch.borrow();
             let suffix = &ch_borrow.t.term[prefix.len()..];
             // println!("prefix='{}',   term='{}', suffix='{}'", prefix, ch_borrow.t.term, suffix);
             assert!(suffix.len() > 0);
-            suffix.as_bytes()[0] // output first letter (byte) after parent prefix
+            first_letter(suffix)
         }).collect()
     }
 
@@ -260,15 +264,18 @@ impl<'n> TrieNode<'n> {
 
 
             if self_borrow.children.len() > 0 {
+                assert!(self_borrow.children.len() <= u32::max_value() as usize);
+
                 // println!("flushed node with {} children: term: '{}'", self_borrow.children.len(), self.term());
 
                 // TODO assert that children_index and child_pointers are in ascending order
                 let children_index = self.create_child_index(self.term());
                 let child_pointers = self.create_child_pointers();
+                //println!("child index: {:?}", children_index);
+                //println!("child ptrs: {:?}", child_pointers);
 
-                *dict_ptr += dict_out.write(&children_index[..]).unwrap();
-                ALIGN!(dict_out, dict_ptr, mem::align_of_val(&child_pointers[0]));
-
+                *dict_ptr += dict_out.write(typed_to_bytes(&children_index)).unwrap();
+                //ALIGN!(dict_out, dict_ptr, mem::align_of_val(&child_pointers[0]));
                 *dict_ptr += dict_out.write(typed_to_bytes(&child_pointers)).unwrap();
 
                 // Need to store actual borrows first
@@ -317,8 +324,8 @@ pub struct TrieNodeHeader {
     postings_ptr: u32, // DOCID
     term_ptr: u32,
     term_id: u32, // TERMID
+    num_children: u32,
     term_length: u8,
-    num_children: u8,
     is_prefix: bool,
 }
 
@@ -338,16 +345,19 @@ impl TrieNodeHeader {
         }
     }
 
-    fn get_children_index(&self) -> &[u8] {
-        unsafe { slice::from_raw_parts((self as *const Self).offset(1) as *const u8, self.num_children as usize) }
+    fn get_children_index(&self) -> &[u32] {
+        unsafe {
+            let index_ptr = (self as *const Self).offset(1) as *const u32;
+            slice::from_raw_parts(index_ptr, self.num_children as usize)
+        }
     }
 
     fn get_child_pointers(&self) -> &[u32] {
         unsafe {
-            let children_index  = (self as *const Self).offset(1) as *const u8;
-            let mut child_pointers = children_index.offset(self.num_children as isize);
-            child_pointers = child_pointers.offset(align_to(child_pointers as usize, mem::align_of::<u32>()) as isize);
-            slice::from_raw_parts(child_pointers as *const u32, self.num_children as usize)
+            let children_index  = (self as *const Self).offset(1) as *const u32;
+            let child_pointers = children_index.offset(self.num_children as isize);
+            //child_pointers = child_pointers.offset(align_to(child_pointers as usize, mem::align_of::<u32>()) as isize);
+            slice::from_raw_parts(child_pointers, self.num_children as usize)
         }
     }
 
@@ -363,7 +373,7 @@ impl TrieNodeHeader {
             term_ptr: term_ptr as u32,
             term_id: n.borrow().t.term_id,
             term_length: term.len() as u8,
-            num_children: n.borrow().children.len() as u8,
+            num_children: n.borrow().children.len() as u32,
             is_prefix: n.borrow().is_prefix,
         }
     }
@@ -401,14 +411,18 @@ impl<'a> StaticTrie<'a> {
             let skip = get_common_prefix_len(current_term, term);
             if skip < term.len() {
                 term = &term[skip..];
-                let first_letter = term.as_bytes()[0];
+                let first_letter = first_letter(term);
                 let children_index = cursor.get_children_index();
                 let child_index = match children_index.binary_search(&first_letter) {
                     Ok(index) => index,
                     Err(_) => return None,
                 };
                 let child_pointer = cursor.get_child_pointers()[child_index] as usize;
-                cursor = TrieNodeHeader::from_bytes((&self.trie_buffer[child_pointer..]).as_ptr());
+                println!("child pointer: {}", child_pointer);
+                println!("child index: {:?}", children_index);
+                println!("child ptrs: {:?}", cursor.get_child_pointers());
+                let bufslice = &self.trie_buffer[child_pointer..];
+                cursor = TrieNodeHeader::from_bytes(bufslice.as_ptr());
             } else if skip > term.len() {
                 if find_nearest {
                     return Some(&cursor);
