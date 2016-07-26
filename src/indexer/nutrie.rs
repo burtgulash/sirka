@@ -395,25 +395,19 @@ impl<'a> StaticTrie<'a> {
     pub fn find_term(&self, mut term: &str, find_nearest: bool) -> Option<&TrieNodeHeader> {
         let mut cursor = self.root;
         loop {
-            unsafe {println!("termbuffer: {:?}", str::from_utf8_unchecked(&self.term_buffer[cursor.term_ptr as usize ..cursor.term_ptr as usize + 30]));}
             let current_term = cursor.term(self.term_buffer);
             println!("looking for: '{}', cursor term: '{}', len: {}", term, current_term, cursor.term_length);
             println!("CURSOR: {:?}", cursor);
             let skip = get_common_prefix_len(current_term, term);
             if skip < term.len() {
                 term = &term[skip..];
-                let children_index = cursor.get_children_index();
-                println!("children index: {:?}", children_index);
                 let first_letter = term.as_bytes()[0];
-                println!("first letter: '{}'", first_letter as char);
+                let children_index = cursor.get_children_index();
                 let child_index = match children_index.binary_search(&first_letter) {
                     Ok(index) => index,
                     Err(_) => return None,
                 };
-                let child_pointers = cursor.get_child_pointers();
-                println!("child pointers: {:?}", cursor.get_child_pointers());
-                let child_pointer = child_pointers[child_index] as usize;
-                println!("child at pointer {}!", child_pointer);
+                let child_pointer = cursor.get_child_pointers()[child_index] as usize;
                 cursor = TrieNodeHeader::from_bytes((&self.trie_buffer[child_pointer..]).as_ptr());
             } else if skip > term.len() {
                 if find_nearest {
