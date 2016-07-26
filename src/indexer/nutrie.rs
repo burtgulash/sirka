@@ -69,8 +69,8 @@ pub fn create_trie<'a, PS, W>(
 
     // Create 2 dummy roots - because you need 2 node pointers - parent and current
     let root_term = WrittenTerm::new("", 0, 0);
-    let root1 = TrieNode::new(None, root_term.clone(), true, None);
-    let root2 = TrieNode::new(Some(root1.clone()), root_term, true, None);
+    let root1 = TrieNode::new(None, root_term.clone(), false, None);
+    let root2 = TrieNode::new(Some(root1.clone()), root_term, false, None);
     root1.clone().add_child(root2.clone());
 
     let mut parent: TrieNode = root1.clone();
@@ -113,7 +113,7 @@ pub fn create_trie<'a, PS, W>(
                 let postings_to_merge = vec![child_postings.as_ref().unwrap(), child2_postings];
                 TrieNode::new(
                     current.parent(),
-                    new_term, true,
+                    new_term, false,
                     Some(Postings::merge(&postings_to_merge[..])),
                 )
             };
@@ -136,7 +136,7 @@ pub fn create_trie<'a, PS, W>(
         let parent_clone = parent.clone();
         current = parent.add_child(TrieNode::new(
             Some(parent_clone),
-            new_term, false,
+            new_term, true,
             child_postings,
         ));
     }
@@ -167,7 +167,7 @@ type TrieNodeWeak<'n> = Weak<RefCell<_TrieNode<'n>>>;
 struct TrieNode<'n>(TrieNodeRef<'n>);
 struct _TrieNode<'n> {
     t: WrittenTerm<'n>,
-    is_prefix: bool,
+    is_word: bool,
     pointer_in_dictbuf: Option<usize>,
     postings: Option<Postings>,
     parent: Option<TrieNodeWeak<'n>>,
@@ -175,10 +175,10 @@ struct _TrieNode<'n> {
 }
 
 impl<'n> TrieNode<'n> {
-    fn new(parent: Option<TrieNode<'n>>, t: WrittenTerm<'n>, is_prefix: bool, postings: Option<Postings>) -> TrieNode<'n> {
+    fn new(parent: Option<TrieNode<'n>>, t: WrittenTerm<'n>, is_word: bool, postings: Option<Postings>) -> TrieNode<'n> {
         TrieNode(Rc::new(RefCell::new(_TrieNode {
             t: t,
-            is_prefix: is_prefix,
+            is_word: is_word,
             pointer_in_dictbuf: None,
             postings: postings,
             parent: parent.map(|p| Rc::downgrade(&p.clone())),
@@ -314,7 +314,7 @@ pub struct TrieNodeHeader {
     term_id: u32, // TERMID
     num_children: u32,
     term_length: u8,
-    is_prefix: bool,
+    is_word: bool,
 }
 
 impl TrieNodeHeader {
@@ -361,7 +361,7 @@ impl TrieNodeHeader {
             term_id: n.borrow().t.term_id,
             term_length: term.len() as u8,
             num_children: n.borrow().children.len() as u32,
-            is_prefix: n.borrow().is_prefix,
+            is_word: n.borrow().is_word,
         }
     }
 
