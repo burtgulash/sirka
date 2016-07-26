@@ -252,16 +252,18 @@ impl<'n> TrieNode<'n> {
                 }}
             }
 
-            let header = TrieNodeHeader::from_trienode(&self, prefix.len(), *postings_ptr);
+            let header = TrieNodeHeader::from_trienode(&self, prefix, *postings_ptr);
+            // NOTE this align is not needed when Header is aligned to repr(C) (autoalign)
             //ALIGN!(dict_out, dict_ptr, mem::align_of::<TrieNodeHeader>());
+           
             *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
 
 
             if self_borrow.children.len() > 0 {
                 // println!("flushed node with {} children: term: '{}'", self_borrow.children.len(), self.term());
 
-                let children_index = self.create_child_index(self.term());
                 // TODO assert that children_index and child_pointers are in ascending order
+                let children_index = self.create_child_index(self.term());
                 let child_pointers = self.create_child_pointers();
 
                 *dict_ptr += dict_out.write(&children_index[..]).unwrap();
@@ -278,15 +280,12 @@ impl<'n> TrieNode<'n> {
                 None
             }
         };
-        // TODO assert children are sorted
 
-        {
-            if let Some(postings) = maybe_merged {
-                self.borrow_mut().postings = Some(postings);
-            }
-            self.borrow_mut().children.clear();
-            self.borrow_mut().pointer_in_dictbuf = Some(dict_position);
+        if let Some(postings) = maybe_merged {
+            self.borrow_mut().postings = Some(postings);
         }
+        self.borrow_mut().children.clear();
+        self.borrow_mut().pointer_in_dictbuf = Some(dict_position);
 
         let self_borrow = self.borrow();
         let postings = self_borrow.postings.as_ref().unwrap();
@@ -352,14 +351,13 @@ impl TrieNodeHeader {
         }
     }
 
-    fn from_trienode<'n>(n: &TrieNodeRef<'n>, prefix_len: usize, postings_ptr: u32) -> TrieNodeHeader {
-        let term = &n.borrow().t.term[prefix_len..];
-        let term_ptr = n.borrow().t.term_ptr + prefix_len;
+    fn from_trienode<'n>(n: &TrieNodeRef<'n>, prefix: &str, postings_ptr: u32) -> TrieNodeHeader {
+        let term = &n.borrow().t.term[prefix.len()..];
+        let term_ptr = n.borrow().t.term_ptr + prefix.len();
 
         // TODO Handle longer strings by truncating
         assert!(term.len() < u8::max_value() as usize);
 
-        println!("Term length: {}", term.len());
         TrieNodeHeader {
             postings_ptr: postings_ptr,
             term_ptr: term_ptr as u32,
