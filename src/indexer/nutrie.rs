@@ -342,9 +342,10 @@ impl TrieNodeHeader {
 
     fn get_child_pointers(&self) -> &[u32] {
         unsafe {
-            let children_index = (self as *const Self).offset(1) as *const u8;
-            let child_pointers = children_index.offset(self.num_children as isize) as *const u32;
-            slice::from_raw_parts(child_pointers, self.num_children as usize)
+            let children_index  = (self as *const Self).offset(1) as *const u8;
+            let mut child_pointers = children_index.offset(self.num_children as isize);
+            child_pointers = child_pointers.offset(align_to(child_pointers as usize, mem::align_of::<u32>()) as isize);
+            slice::from_raw_parts(child_pointers as *const u32, self.num_children as usize)
         }
     }
 
