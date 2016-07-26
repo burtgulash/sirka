@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 use std::iter::FromIterator;
 use std::collections::BinaryHeap;
-use write::*;
 use types::*;
 
 

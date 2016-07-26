@@ -1,5 +1,4 @@
 use std::mem;
-use write::*;
 use types::*;
 
 #[derive(Clone)]

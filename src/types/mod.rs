@@ -1,5 +1,8 @@
 pub use meta::*;
+pub use docseq::*;
 pub mod meta;
+pub mod docseq;
+
 
 pub type TermId = u32;
 pub type DocId = u32;
