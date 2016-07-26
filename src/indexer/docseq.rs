@@ -1,19 +1,32 @@
 use indexer::*;
 
-pub trait DocSequence {
+pub trait Sequence<'a> {
+    type Slider: SequenceSlider + 'a;
+    fn slider(&self) -> Self::Slider;
+}
+
+pub trait SequenceSlider: Clone {
     fn next(&mut self) -> Option<DocId>;
     fn skip_to(&mut self, doc_id: DocId) -> Option<DocId>;
     fn skip_n(&mut self, n: usize) -> Option<DocId>;
 }
 
-struct SliceSequence<'a> {
+impl<'a> Sequence<'a> for &'a [DocId] {
+    type Slider = SliceSequenceSlider<'a>;
+    fn slider(&self) -> Self::Slider {
+        SliceSequenceSlider::new(*self)
+    }
+}
+
+#[derive(Clone)]
+pub struct SliceSequenceSlider<'a> {
     seq: &'a [DocId],
     position: usize,
 }
 
-impl<'a> SliceSequence<'a> {
+impl<'a> SliceSequenceSlider<'a> {
     fn new(seq: &'a [DocId]) -> Self {
-        SliceSequence {
+        SliceSequenceSlider {
             seq: seq,
             position: 0,
         }
@@ -28,13 +41,13 @@ impl<'a> SliceSequence<'a> {
     }
 }
 
-impl<'a> DocSequence for SliceSequence<'a> {
+impl<'a> SequenceSlider for SliceSequenceSlider<'a> {
     fn next(&mut self) -> Option<DocId> {
         self.skip_n(1)
     }
 
     fn skip_to(&mut self, doc_id: DocId) -> Option<DocId> {
-        while self.position < self.seq.len() 
+        while self.position < self.seq.len()
            && self.seq[self.position] < doc_id
         { self.position += 1; }
         self.return_at_current()
