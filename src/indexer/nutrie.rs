@@ -10,7 +10,7 @@ use std::ops::Deref;
 
 use indexer::*;
 
-pub fn get_common_prefix_len(a: &str, b: &str) -> usize {
+pub fn common_prefix_len(a: &str, b: &str) -> usize {
     a.chars().zip(b.chars())
         .take_while(|&(ac, bc)| { ac == bc })
         .fold(0, |acc, (x, _)| acc + x.len_utf8())
@@ -81,7 +81,7 @@ pub fn create_trie<'a, PS, W>(
     let mut postings_ptr = 0;
 
     for &Term{ref term, term_id} in terms.iter() {
-        let prefix_len = get_common_prefix_len(current.term(), term);
+        let prefix_len = common_prefix_len(current.term(), term);
         let child_postings = postings_store.get_postings(term_id);
 
         // println!("IT {} {} {}", current.term(), term, prefix_len);
@@ -230,7 +230,8 @@ impl<'n> TrieNode<'n> {
         }).collect()
     }
 
-    fn create_child_index(&self, prefix: &str) -> Vec<u32> {
+    fn create_child_index(&self) -> Vec<u32> {
+        let prefix = self.term();
         self.borrow().children.iter().map(|ch| {
             let ch_borrow = ch.borrow();
             let suffix = &ch_borrow.t.term[prefix.len()..];
@@ -246,19 +247,9 @@ impl<'n> TrieNode<'n> {
             let self_borrow = self.borrow();
             let prefix = parent.term();
 
-            macro_rules! ALIGN {
-                ($out:expr, $ptr:expr, $align_boundary:expr) => {{
-                    let align_buf = 0usize;
-                    let alignment = align_to(*$ptr, $align_boundary);
-                    let align_slice = unsafe { slice::from_raw_parts(&align_buf as *const usize as *const u8, alignment) };
-                    // println!("aligned by {} bytes", align_slice.len());
-                    *$ptr += $out.write(&align_slice).unwrap()
-                }}
-            }
-
+            // NOTE aligning is not needed when Header, child index and child pointers are aligned
+            // to repr(C) (autoalign)
             let header = TrieNodeHeader::from_trienode(&self, prefix, *postings_ptr);
-            // NOTE this align is not needed when Header is aligned to repr(C) (autoalign)
-            //ALIGN!(dict_out, dict_ptr, mem::align_of::<TrieNodeHeader>());
            
             *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
 
@@ -269,13 +260,10 @@ impl<'n> TrieNode<'n> {
                 // println!("flushed node with {} children: term: '{}'", self_borrow.children.len(), self.term());
 
                 // TODO assert that children_index and child_pointers are in ascending order
-                let children_index = self.create_child_index(self.term());
+                let children_index = self.create_child_index();
                 let child_pointers = self.create_child_pointers();
-                //println!("child index: {:?}", children_index);
-                //println!("child ptrs: {:?}", child_pointers);
 
                 *dict_ptr += dict_out.write(typed_to_bytes(&children_index)).unwrap();
-                //ALIGN!(dict_out, dict_ptr, mem::align_of_val(&child_pointers[0]));
                 *dict_ptr += dict_out.write(typed_to_bytes(&child_pointers)).unwrap();
 
                 // Need to store actual borrows first
@@ -356,7 +344,6 @@ impl TrieNodeHeader {
         unsafe {
             let children_index  = (self as *const Self).offset(1) as *const u32;
             let child_pointers = children_index.offset(self.num_children as isize);
-            //child_pointers = child_pointers.offset(align_to(child_pointers as usize, mem::align_of::<u32>()) as isize);
             slice::from_raw_parts(child_pointers, self.num_children as usize)
         }
     }
@@ -408,7 +395,7 @@ impl<'a> StaticTrie<'a> {
             let current_term = cursor.term(self.term_buffer);
             println!("looking for: '{}', cursor term: '{}', len: {}", term, current_term, cursor.term_length);
             println!("CURSOR: {:?}", cursor);
-            let skip = get_common_prefix_len(current_term, term);
+            let skip = common_prefix_len(current_term, term);
             if skip < term.len() {
                 term = &term[skip..];
                 let first_letter = first_letter(term);
@@ -418,9 +405,7 @@ impl<'a> StaticTrie<'a> {
                     Err(_) => return None,
                 };
                 let child_pointer = cursor.get_child_pointers()[child_index] as usize;
-                println!("child pointer: {}", child_pointer);
                 println!("child index: {:?}", children_index);
-                println!("child ptrs: {:?}", cursor.get_child_pointers());
                 let bufslice = &self.trie_buffer[child_pointer..];
                 cursor = TrieNodeHeader::from_bytes(bufslice.as_ptr());
             } else if skip > term.len() {
