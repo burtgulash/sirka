@@ -33,9 +33,49 @@ fn main() {
     let dictbuf = StaticTrie::read(&mut trie_reader);
     let dict = StaticTrie::new(&dictbuf[..], meta.dict_size as usize, meta.root_ptr as usize, meta.term_buffer_size as usize);
 
+    let mut docs_reader = create_reader(indexdir, "docs");
+    let mut docsbuf = Vec::new();
+    docs_reader.read_to_end(&mut docsbuf).unwrap();
+
+    let mut tfs_reader = create_reader(indexdir, "tfs");
+    let mut tfsbuf = Vec::new();
+    tfs_reader.read_to_end(&mut tfsbuf).unwrap();
+
     println!("META: {:?}", meta);
     match dict.find_term(search_term, true) {
         Some(_) => println!("found!"),
         None => println!("nothing!"),
     };
+}
+
+macro_rules! tryopt {
+    ($e:expr) => (match $e {
+        Some(value) => value,
+        None => return None,
+    })
+}
+
+fn find_terms<'a>(dict: &'a StaticTrie, query: &[&str]) -> Option<Vec<&'a TrieNodeHeader>> {
+    let mut headers = Vec::new();
+    for term in query.iter() {
+        match dict.find_term(term, true) {
+            Some(header) => headers.push(header),
+            None => return None,
+        }
+    }
+    Some(headers)
+}
+
+fn daat<'a, S: Sequence<'a>>(docs: S, tfs: S, query_nodes: &[&TrieNodeHeader]) -> bool {
+    let mut doc_sliders = query_nodes.iter().map(|n| {
+        let mut slider = docs.slider();
+        slider.skip_n(n.postings_ptr as usize);
+        slider
+    });
+    let mut tf_sliders = query_nodes.iter().map(|n| {
+        let mut slider = tfs.slider();
+        slider.skip_n(n.postings_ptr as usize);
+        slider
+    });
+    false
 }
