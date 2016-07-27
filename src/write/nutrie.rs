@@ -1,4 +1,4 @@
-use std::{u32,str,slice,cmp,mem};
+use std::{str,slice,cmp,mem};
 use std::io::{Write};
 use std::rc::{Rc,Weak};
 use std::cell::{RefCell,Ref,RefMut};
@@ -215,43 +215,40 @@ impl<'n> TrieNode<'n> {
     }
 
     fn flush<W: Write>(&self, parent: &Self, dict_ptr: &mut usize, postings_ptr: &mut u32, dict_out: &mut W, docs_out: &mut W, tfs_out: &mut W, pos_out: &mut W) {
-        let dict_position = *dict_ptr;
-        let maybe_merged = {
-            let self_borrow = self.borrow();
-            let prefix = parent.term();
-
-            // NOTE aligning is not needed when Header, child index and child pointers are aligned
-            // to repr(C) (autoalign)
-            let header = TrieNodeHeader::from_trienode(&self, prefix, *postings_ptr);
-           
-            *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
-
-
-            if self_borrow.children.len() > 0 {
-                assert!(self_borrow.children.len() <= u32::max_value() as usize);
-
-                // println!("flushed node with {} children: term: '{}'", self_borrow.children.len(), self.term());
-
-                // TODO assert that children_index and child_pointers are in ascending order
-                let children_index = self.create_child_index();
-                let child_pointers = self.create_child_pointers();
-
-                *dict_ptr += dict_out.write(typed_to_bytes(&children_index)).unwrap();
-                *dict_ptr += dict_out.write(typed_to_bytes(&child_pointers)).unwrap();
+        // println!("flushing node with {} children: term: '{}'", self_borrow.children.len(), self.term());
+        if self.borrow().children.len() > 0 {
+            let merged_postings = {
+                let selfb = self.borrow();
+                assert!(selfb.children.len() <= u32::max_value() as usize);
 
                 // Need to store actual borrows first
-                let borrows = self_borrow.children.iter().map(|p| { p.borrow() }).collect::<Vec<_>>();
+                let borrows = selfb.children.iter().map(|p| { p.borrow() }).collect::<Vec<_>>();
                 let postings_to_merge = borrows.iter().map(|p| { p.postings.as_ref().unwrap() }).collect::<Vec<_>>();
-                Some(Postings::merge(&postings_to_merge[..]))
-            } else {
-                // else this node is a leaf
-                None
-            }
-        };
-
-        if let Some(postings) = maybe_merged {
-            self.borrow_mut().postings = Some(postings);
+                Postings::merge(&postings_to_merge[..])
+            };
+            self.borrow_mut().postings = Some(merged_postings);
         }
+
+        let dict_position = *dict_ptr;
+        let prefix = parent.term();
+
+        // NOTE aligning is not needed when Header, child index and child pointers are aligned
+        // to repr(C) (autoalign)
+        let header = TrieNodeHeader::from_trienode(&self, prefix, *postings_ptr);
+        *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
+
+        if self.borrow().children.len() > 0 {
+            // TODO assert that children_index and child_pointers are in ascending order
+            let children_index = self.create_child_index();
+            let child_pointers = self.create_child_pointers();
+
+            *dict_ptr += dict_out.write(typed_to_bytes(&children_index)).unwrap();
+            *dict_ptr += dict_out.write(typed_to_bytes(&child_pointers)).unwrap();
+        }
+
+        // if let Some(postings) = maybe_merged {
+        //     self.borrow_mut().postings = Some(postings);
+        // }
         self.borrow_mut().children.clear();
         self.borrow_mut().pointer_in_dictbuf = Some(dict_position);
 
@@ -288,13 +285,14 @@ impl TrieNodeHeader {
         let term_ptr = n.borrow().t.term_ptr + prefix.len();
 
         // TODO Handle longer strings by truncating
-        assert!(term.len() < u8::max_value() as usize);
+        assert!(term.len() < u16::max_value() as usize);
 
         TrieNodeHeader {
             postings_ptr: postings_ptr,
             term_ptr: term_ptr as u32,
             term_id: n.borrow().t.term_id,
-            term_length: term.len() as u8,
+            term_length: term.len() as u16,
+            num_postings: n.borrow().postings.as_ref().unwrap().docs.len() as u32,
             num_children: n.borrow().children.len() as u32,
             is_word: n.borrow().is_word,
         }
