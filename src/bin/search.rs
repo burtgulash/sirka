@@ -67,15 +67,52 @@ fn find_terms<'a>(dict: &'a StaticTrie, query: &[&str]) -> Option<Vec<&'a TrieNo
 }
 
 fn daat<'a, S: Sequence<'a>>(docs: S, tfs: S, query_nodes: &[&TrieNodeHeader]) -> bool {
-    let mut doc_sliders = query_nodes.iter().map(|n| {
-        let mut slider = docs.slider();
-        slider.skip_n(n.postings_ptr as usize);
-        slider
-    });
-    let mut tf_sliders = query_nodes.iter().map(|n| {
-        let mut slider = tfs.slider();
-        slider.skip_n(n.postings_ptr as usize);
-        slider
-    });
+    let mut doc_sliders = query_nodes.iter().map(|n| docs.slider(n.postings_ptr as usize, n.num_postings as usize)).collect::<Vec<_>>();
+    let mut tf_sliders = query_nodes.iter().map(|n| tfs.slider(n.postings_ptr as usize, n.num_postings as usize)).collect::<Vec<_>>();
+
+    // TODO sort'em sliders
+    let mut result = Vec::new();
+
+    let mut current_doc_id = 0;
+    'merge: loop {
+        let mut i = 0;
+        while i < doc_sliders.len() {
+            let mut slider = &mut doc_sliders[i];
+            if let Some(doc_id) = slider.skip_to(current_doc_id) {
+                if doc_id > current_doc_id {
+                    // Aligning failed. Start from first term
+                    i = 0;
+                    current_doc_id = doc_id;
+                    continue;
+                }
+            } else {
+                break 'merge;
+            }
+
+            // Try to align next query term
+            i += 1;
+        }
+
+        // Sliders are now aligned on 'doc_id'.
+        // This means a match, so output one result
+        result.push(current_doc_id);
+
+        // Advance all sliders to next doc and record
+        // the maximum doc_id for each slider
+        let mut max_doc_id = current_doc_id;
+        for slider in &mut doc_sliders {
+            if let Some(next_doc_id) = slider.next() {
+                if next_doc_id > max_doc_id {
+                    max_doc_id = next_doc_id;
+                }
+            } else {
+                break 'merge;
+            }
+        }
+
+        // Start next iteration alignment with maximum doc id
+        current_doc_id = max_doc_id;
+    }
+
     false
 }

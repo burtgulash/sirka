@@ -3,8 +3,9 @@ use types::{DocId,Sequence,SequenceSlider,SequenceWriter};
 
 impl<'a> Sequence<'a> for &'a [DocId] {
     type Slider = SliceSequenceSlider<'a>;
-    fn slider(&self) -> Self::Slider {
-        SliceSequenceSlider::new(*self)
+    fn slider(self, start: usize, len: usize) -> Self::Slider {
+        let s = SliceSequenceSlider::new(&self[start..start+len]);
+        s.skip_n(start);
     }
 }
 
