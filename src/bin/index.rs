@@ -1,4 +1,4 @@
-extern crate indox;
+extern crate sirka;
 
 use std::cmp::Ordering;
 use std::io::{BufReader, BufWriter, Write};
@@ -6,7 +6,7 @@ use std::io::BufRead;
 use std::fs::{self,File};
 use std::collections::HashMap;
 
-use indox::*;
+use sirka::*;
 
 static USAGE: &'static str = "usage: index <inputfile> <outputdir>";
 

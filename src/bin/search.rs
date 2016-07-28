@@ -1,9 +1,9 @@
-extern crate indox;
+extern crate sirka;
 
 use std::path::Path;
 use std::io::{BufReader,Read};
 use std::fs::File;
-use indox::*;
+use sirka::*;
 
 static USAGE: &'static str = "usage: search <indexdir> <term>";
 
