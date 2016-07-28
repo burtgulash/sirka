@@ -24,9 +24,9 @@ impl<'a> SliceSequenceSlider<'a> {
         }
     }
 
-    fn return_at_current(&self) -> Option<DocId> {
+    fn current(&self) -> Option<DocId> {
         if self.position < self.seq.len() {
-            Some(self.seq[self.position - 1])
+            Some(self.seq[self.position])
         } else {
             None
         }
@@ -41,13 +41,15 @@ impl<'a> SequenceSlider for SliceSequenceSlider<'a> {
     fn skip_to(&mut self, doc_id: DocId) -> Option<DocId> {
         while self.position < self.seq.len()
            && self.seq[self.position] < doc_id
-        {self.position += 1; }
-        self.return_at_current()
+        {
+            self.position += 1;
+        }
+        self.current()
     }
 
     fn skip_n(&mut self, n: usize) -> Option<DocId> {
         self.position += n;
-        self.return_at_current()
+        self.current()
     }
 
     fn index(&self) -> usize {

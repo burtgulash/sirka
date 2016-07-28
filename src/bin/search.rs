@@ -79,7 +79,7 @@ struct PostingSlider<S: SequenceSlider> {
 
 fn daat<S: Sequence>(docs: S, tfs: S, term_headers: &[&TrieNodeHeader]) -> Vec<DocId> {
     let mut sliders = term_headers.iter().map(|th| {
-        // println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
+        println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
         PostingSlider {
             doc_slider: docs.slider(th.postings_ptr as usize, th.num_postings as usize),
             tfs_slider: tfs.slider(th.postings_ptr as usize, th.num_postings as usize),
@@ -101,7 +101,6 @@ fn daat<S: Sequence>(docs: S, tfs: S, term_headers: &[&TrieNodeHeader]) -> Vec<D
     'merge: loop {
         let mut i = 0;
         while i < sliders.len() {
-            // println!("Trying slider no.{}, currentdoc={}", i, current_doc_id);
             let mut slider = &mut sliders[i];
             if let Some(doc_id) = slider.doc_slider.skip_to(current_doc_id) {
                 if doc_id > current_doc_id {

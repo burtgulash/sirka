@@ -236,6 +236,7 @@ impl<'n> TrieNode<'n> {
         // to repr(C) (autoalign)
         let header = TrieNodeHeader::from_trienode(&self, prefix, *postings_ptr);
         *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
+        *postings_ptr += self.borrow().postings.as_ref().unwrap().docs.len() as u32;
 
         if self.borrow().children.len() > 0 {
             // TODO assert that children_index and child_pointers are in ascending order
@@ -256,7 +257,7 @@ impl<'n> TrieNode<'n> {
         let postings = self_borrow.postings.as_ref().unwrap();
 
         // assert!(is_sorted_ascending(&postings.docs));
-        *postings_ptr += (docs_out.write(typed_to_bytes(&postings.docs)).unwrap() / mem::size_of::<u32>()) as u32;
+        docs_out.write(typed_to_bytes(&postings.docs)).unwrap();
         tfs_out.write(typed_to_bytes(&postings.tfs)).unwrap();
         pos_out.write(typed_to_bytes(&postings.positions)).unwrap();
     }
