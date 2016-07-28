@@ -1,11 +1,12 @@
 use std::io::{Result,BufWriter};
-use types::{DocId,Sequence,SequenceSlider,SequenceWriter};
+use types::{DocId,Sequence,SequenceSlider};
 
-impl<'a> Sequence<'a> for &'a [DocId] {
+impl<'a> Sequence for &'a [DocId] {
     type Slider = SliceSequenceSlider<'a>;
-    fn slider(self, start: usize, len: usize) -> Self::Slider {
-        let s = SliceSequenceSlider::new(&self[start..start+len]);
+    fn slider(&self, start: usize, len: usize) -> Self::Slider {
+        let mut s = SliceSequenceSlider::new(&self[start..start+len]);
         s.skip_n(start);
+        s
     }
 }
 
@@ -48,19 +49,45 @@ impl<'a> SequenceSlider for SliceSequenceSlider<'a> {
         self.position += n;
         self.return_at_current()
     }
+
+    fn index(&self) -> usize {
+        self.position
+    }
 }
 
-struct SliceSequenceWriter {
-    writer: BufWriter<File>
-}
+// struct SliceSequenceWriter {
+//     writer: BufWriter<File>
+// }
+// 
+// impl SequenceWriter for SliceSequenceWriter {
+//     fn write_doc(&mut self, doc_id: DocId) -> io::Result<()> {
+//         let docbuf = slice::from_raw_parts(&doc_id as *const _ as *const u8, mem::size_of_val(doc_id));
+//         self.writer.write(docbuf).map_err(|e| ())
+//     }
+// 
+//     fn finish_docs(&mut self) -> io::Result {
+//         self.writer.flush().map_err(|e| ())
+//     }
+// }
 
-impl SequenceWriter for SliceSequenceWriter {
-    fn write_doc(&mut self, doc_id: DocId) -> io::Result<()> {
-        let docbuf = slice::from_raw_parts(&doc_id as *const _ as *const u8, mem::size_of_val(doc_id));
-        self.writer.write(docbuf).map_err(|e| ())
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use types::*;
+
+    fn use_sequence<S: Sequence>(seq: S) {
+        let mut slider = seq.slider(3, 55);
+        while let Some(doc_id) = slider.next() {
+            println!("Iterated sequence to: {}", doc_id);
+        }
     }
 
-    fn finish_docs(&mut self) -> io::Result {
-        self.writer.flush().map_err(|e| ())
+    #[test]
+    fn test_it() {
+        let mut data = Vec::<DocId>::new();
+        for i in 0..123 {
+            data.push(i);
+        }
+        use_sequence(&data[..]);
     }
 }

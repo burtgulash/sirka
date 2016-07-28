@@ -1,8 +1,8 @@
 use std::io;
 use types::*;
 
-pub trait Sequence<'a> {
-    type Slider: SequenceSlider + 'a;
+pub trait Sequence {
+    type Slider: SequenceSlider;
     fn slider(&self, start: usize, len: usize) -> Self::Slider;
 }
 

@@ -44,6 +44,7 @@ fn main() {
 
     println!("Searching query: {:?}", query);
     if let Some(term_headers) = find_terms(&dict, query) {
+        //let result = daat(&bytes_to_typed::<DocId>(&docsbuf), &bytes_to_typed::<DocId>(&tfsbuf), &term_headers);
         println!("Found!");
     } else {
         println!("Not found!");
@@ -74,11 +75,11 @@ struct PostingSlider<S: SequenceSlider> {
 //    pos_slider: S,
 }
 
-fn daat<'a, S: Sequence<'a>>(docs: S, tfs: S, query_nodes: &[&TrieNodeHeader]) -> Vec<DocId> {
-    let mut sliders = query_nodes.iter().map(|qn| {
+fn daat<S: Sequence>(docs: &S, tfs: &S, term_headers: &[&TrieNodeHeader]) -> Vec<DocId> {
+    let mut sliders = term_headers.iter().map(|th| {
         PostingSlider {
-            doc_slider: docs.slider(qn.postings_ptr as usize, qn.num_postings as usize),
-            tfs_slider: tfs.slider(qn.postings_ptr as usize, qn.num_postings as usize),
+            doc_slider: docs.slider(th.postings_ptr as usize, th.num_postings as usize),
+            tfs_slider: tfs.slider(th.postings_ptr as usize, th.num_postings as usize),
         }
     }).collect::<Vec<_>>();
 

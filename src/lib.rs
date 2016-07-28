@@ -1,8 +1,9 @@
 pub mod write;
 pub mod read;
 pub mod types;
-mod util;
+pub mod util;
 
 pub use read::StaticTrie;
 pub use write::{TermBuf,create_trie};
 pub use types::*;
+pub use util::bytes_to_typed;
