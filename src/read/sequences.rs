@@ -4,7 +4,7 @@ use types::{DocId,Sequence,SequenceSlider};
 impl<'a> Sequence for &'a [DocId] {
     type Slider = SliceSequenceSlider<'a>;
     fn slider(&self, start: usize, len: usize) -> Self::Slider {
-        let mut s = SliceSequenceSlider::new(&self[start..start+len]);
+        let mut s = SliceSequenceSlider::new(&self[..start+len]);
         s.skip_n(start);
         s
     }
@@ -41,7 +41,7 @@ impl<'a> SequenceSlider for SliceSequenceSlider<'a> {
     fn skip_to(&mut self, doc_id: DocId) -> Option<DocId> {
         while self.position < self.seq.len()
            && self.seq[self.position] < doc_id
-        { self.position += 1; }
+        {self.position += 1; }
         self.return_at_current()
     }
 

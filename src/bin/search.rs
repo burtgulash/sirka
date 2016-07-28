@@ -37,15 +37,17 @@ fn main() {
     let mut docs_reader = create_reader(indexdir, "docs");
     let mut docsbuf = Vec::new();
     docs_reader.read_to_end(&mut docsbuf).unwrap();
+    let docs_sequence = bytes_to_typed(&docsbuf);
 
     let mut tfs_reader = create_reader(indexdir, "tfs");
     let mut tfsbuf = Vec::new();
     tfs_reader.read_to_end(&mut tfsbuf).unwrap();
+    let tfs_sequence = bytes_to_typed(&tfsbuf);
 
     println!("Searching query: {:?}", query);
     if let Some(term_headers) = find_terms(&dict, query) {
-        //let result = daat(&bytes_to_typed::<DocId>(&docsbuf), &bytes_to_typed::<DocId>(&tfsbuf), &term_headers);
-        println!("Found!");
+        let result = daat(docs_sequence, tfs_sequence, &term_headers);
+        println!("Found in {} docs!", result.len());
     } else {
         println!("Not found!");
     }
@@ -75,13 +77,22 @@ struct PostingSlider<S: SequenceSlider> {
 //    pos_slider: S,
 }
 
-fn daat<S: Sequence>(docs: &S, tfs: &S, term_headers: &[&TrieNodeHeader]) -> Vec<DocId> {
+fn daat<S: Sequence>(docs: S, tfs: S, term_headers: &[&TrieNodeHeader]) -> Vec<DocId> {
     let mut sliders = term_headers.iter().map(|th| {
+        // println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
         PostingSlider {
             doc_slider: docs.slider(th.postings_ptr as usize, th.num_postings as usize),
             tfs_slider: tfs.slider(th.postings_ptr as usize, th.num_postings as usize),
         }
     }).collect::<Vec<_>>();
+
+    // DEBUG
+    for slider in &sliders {
+        let mut scopy = slider.doc_slider.clone();
+        // while let Some(doc_id) = scopy.next() {
+        //     println!("doc_id in seq: {}", doc_id);
+        // }
+    }
 
     // TODO sort'em sliders
     let mut result = Vec::new();
@@ -90,6 +101,7 @@ fn daat<S: Sequence>(docs: &S, tfs: &S, term_headers: &[&TrieNodeHeader]) -> Vec
     'merge: loop {
         let mut i = 0;
         while i < sliders.len() {
+            // println!("Trying slider no.{}, currentdoc={}", i, current_doc_id);
             let mut slider = &mut sliders[i];
             if let Some(doc_id) = slider.doc_slider.skip_to(current_doc_id) {
                 if doc_id > current_doc_id {

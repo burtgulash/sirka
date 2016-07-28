@@ -89,24 +89,29 @@ impl Postings {
             }
         }
 
-        while let Some(mut itptr) = h.pop() {
-            if let Some(doc_id) = its[itptr.it_i].docs.next() {
-                itptr.current_doc = doc_id;
-                h.push(itptr);
+        while let Some(itptr) = h.pop() {
+            let doc_id = itptr.current_doc;
+            let it_tf = its[itptr.it_i].tfs.next().unwrap();
 
-                let it_tf = its[itptr.it_i].tfs.next().unwrap();
-                if doc_id == last_doc_id {
-                    for _ in 0..it_tf {
-                        let pos = its[itptr.it_i].positions.next().unwrap();
-                        tmp_pos.push(pos)
-                    }
-                } else {
-                    if last_doc_id != 0 {
-                        ADD_DOC!();
-                    }
-
-                    last_doc_id = doc_id;
+            if doc_id == last_doc_id {
+                for _ in 0..it_tf {
+                    let pos = its[itptr.it_i].positions.next().unwrap();
+                    tmp_pos.push(pos)
                 }
+            } else {
+                // Do this for all docs except nil doc // TODO is this necessary?
+                if last_doc_id != 0 {
+                    ADD_DOC!();
+                }
+                last_doc_id = doc_id;
+            }
+
+            // Insert next doc_id into heap if it exists
+            if let Some(next_doc_id) = its[itptr.it_i].docs.next() {
+                h.push(IteratorPointer {
+                    it_i: itptr.it_i,
+                    current_doc: next_doc_id,
+                });
             }
         }
         ADD_DOC!();

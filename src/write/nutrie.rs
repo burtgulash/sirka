@@ -254,7 +254,9 @@ impl<'n> TrieNode<'n> {
 
         let self_borrow = self.borrow();
         let postings = self_borrow.postings.as_ref().unwrap();
-        *postings_ptr += docs_out.write(typed_to_bytes(&postings.docs)).unwrap() as u32;
+
+        // assert!(is_sorted_ascending(&postings.docs));
+        *postings_ptr += (docs_out.write(typed_to_bytes(&postings.docs)).unwrap() / mem::size_of::<u32>()) as u32;
         tfs_out.write(typed_to_bytes(&postings.tfs)).unwrap();
         pos_out.write(typed_to_bytes(&postings.positions)).unwrap();
     }

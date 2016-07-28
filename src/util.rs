@@ -26,3 +26,16 @@ pub fn align_to(n: usize, alignment: usize) -> usize {
     (alignment - 1) - (n + alignment - 1) % alignment
 }
 
+pub fn is_sorted_ascending<T: PartialOrd>(seq: &[T]) -> bool {
+    if seq.len() < 1 {
+        return true;
+    }
+    let mut previous = &seq[0];
+    for item in seq {
+        if previous > item {
+            return false;
+        }
+        previous = item;
+    }
+    return true;
+}
