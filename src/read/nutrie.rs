@@ -57,8 +57,8 @@ impl<'a> StaticTrie<'a> {
         let mut cursor = self.root;
         loop {
             let current_term = cursor.term(self.term_buffer);
-            println!("looking for: '{}', cursor term: '{}', len: {}", term, current_term, cursor.term_length);
-            println!("CURSOR: {:?}", cursor);
+            // println!("looking for: '{}', cursor term: '{}', len: {}", term, current_term, cursor.term_length);
+            // println!("CURSOR: {:?}", cursor);
             let skip = common_prefix_len(current_term, term);
             if skip < term.len() {
                 term = &term[skip..];
@@ -69,7 +69,7 @@ impl<'a> StaticTrie<'a> {
                     Err(_) => return None,
                 };
                 let child_pointer = cursor.get_child_pointers()[child_index] as usize;
-                println!("child index: {:?}", children_index);
+                // println!("child index: {:?}", children_index);
                 let bufslice = &self.trie_buffer[child_pointer..];
                 cursor = TrieNodeHeader::from_bytes(bufslice.as_ptr());
             } else if skip > term.len() {
@@ -81,7 +81,7 @@ impl<'a> StaticTrie<'a> {
             } else {
                 return Some(&cursor);
             }
-            println!("");
+            // println!("");
         }
     }
 }

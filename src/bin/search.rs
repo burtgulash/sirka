@@ -15,13 +15,14 @@ fn create_reader(dirname: &Path, filename: &str) -> BufReader<File> {
 
 fn main() {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 3 {
+    if args.len() < 3 {
         println!("{}", USAGE);
         std::process::exit(1);
     }
 
     let indexdir = Path::new(&args[1]);
-    let search_term = &args[2];
+    let query = &args[2..];
+
 
     let mut meta_reader = create_reader(indexdir, "meta");
     let mut buf = Vec::new();
@@ -41,11 +42,12 @@ fn main() {
     let mut tfsbuf = Vec::new();
     tfs_reader.read_to_end(&mut tfsbuf).unwrap();
 
-    println!("META: {:?}", meta);
-    match dict.find_term(search_term, true) {
-        Some(_) => println!("found!"),
-        None => println!("nothing!"),
-    };
+    println!("Searching query: {:?}", query);
+    if let Some(term_headers) = find_terms(&dict, query) {
+        println!("Found!");
+    } else {
+        println!("Not found!");
+    }
 }
 
 macro_rules! tryopt {
@@ -55,10 +57,10 @@ macro_rules! tryopt {
     })
 }
 
-fn find_terms<'a>(dict: &'a StaticTrie, query: &[&str]) -> Option<Vec<&'a TrieNodeHeader>> {
+fn find_terms<'a, STRING: AsRef<str>>(dict: &'a StaticTrie, query: &[STRING]) -> Option<Vec<&'a TrieNodeHeader>> {
     let mut headers = Vec::new();
     for term in query.iter() {
-        match dict.find_term(term, true) {
+        match dict.find_term(term.as_ref(), true) {
             Some(header) => headers.push(header),
             None => return None,
         }
@@ -66,9 +68,19 @@ fn find_terms<'a>(dict: &'a StaticTrie, query: &[&str]) -> Option<Vec<&'a TrieNo
     Some(headers)
 }
 
-fn daat<'a, S: Sequence<'a>>(docs: S, tfs: S, query_nodes: &[&TrieNodeHeader]) -> bool {
-    let mut doc_sliders = query_nodes.iter().map(|n| docs.slider(n.postings_ptr as usize, n.num_postings as usize)).collect::<Vec<_>>();
-    let mut tf_sliders = query_nodes.iter().map(|n| tfs.slider(n.postings_ptr as usize, n.num_postings as usize)).collect::<Vec<_>>();
+struct PostingSlider<S: SequenceSlider> {
+    doc_slider: S,
+    tfs_slider: S,
+//    pos_slider: S,
+}
+
+fn daat<'a, S: Sequence<'a>>(docs: S, tfs: S, query_nodes: &[&TrieNodeHeader]) -> Vec<DocId> {
+    let mut sliders = query_nodes.iter().map(|qn| {
+        PostingSlider {
+            doc_slider: docs.slider(qn.postings_ptr as usize, qn.num_postings as usize),
+            tfs_slider: tfs.slider(qn.postings_ptr as usize, qn.num_postings as usize),
+        }
+    }).collect::<Vec<_>>();
 
     // TODO sort'em sliders
     let mut result = Vec::new();
@@ -76,9 +88,9 @@ fn daat<'a, S: Sequence<'a>>(docs: S, tfs: S, query_nodes: &[&TrieNodeHeader]) -
     let mut current_doc_id = 0;
     'merge: loop {
         let mut i = 0;
-        while i < doc_sliders.len() {
-            let mut slider = &mut doc_sliders[i];
-            if let Some(doc_id) = slider.skip_to(current_doc_id) {
+        while i < sliders.len() {
+            let mut slider = &mut sliders[i];
+            if let Some(doc_id) = slider.doc_slider.skip_to(current_doc_id) {
                 if doc_id > current_doc_id {
                     // Aligning failed. Start from first term
                     i = 0;
@@ -100,8 +112,8 @@ fn daat<'a, S: Sequence<'a>>(docs: S, tfs: S, query_nodes: &[&TrieNodeHeader]) -
         // Advance all sliders to next doc and record
         // the maximum doc_id for each slider
         let mut max_doc_id = current_doc_id;
-        for slider in &mut doc_sliders {
-            if let Some(next_doc_id) = slider.next() {
+        for slider in &mut sliders {
+            if let Some(next_doc_id) = slider.doc_slider.next() {
                 if next_doc_id > max_doc_id {
                     max_doc_id = next_doc_id;
                 }
@@ -114,5 +126,5 @@ fn daat<'a, S: Sequence<'a>>(docs: S, tfs: S, query_nodes: &[&TrieNodeHeader]) -
         current_doc_id = max_doc_id;
     }
 
-    false
+    result
 }
