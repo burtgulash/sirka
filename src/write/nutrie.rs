@@ -5,7 +5,7 @@ use std::cell::{RefCell,Ref,RefMut};
 use std::ops::Deref;
 
 use write::postings::{Postings,PostingsStore};
-use types::{TermId,Term,TrieNodeHeader};
+use types::{DocId,TermId,Term,TrieNodeHeader};
 use ::util::*;
 
 
@@ -214,7 +214,7 @@ impl<'n> TrieNode<'n> {
         }).collect()
     }
 
-    fn flush<W: Write>(&self, parent: &Self, dict_ptr: &mut usize, postings_ptr: &mut u32, dict_out: &mut W, docs_out: &mut W, tfs_out: &mut W, pos_out: &mut W) {
+    fn flush<W: Write>(&self, parent: &Self, dict_ptr: &mut usize, postings_ptr: &mut DocId, dict_out: &mut W, docs_out: &mut W, tfs_out: &mut W, pos_out: &mut W) {
         // println!("flushing node with {} children: term: '{}'", self_borrow.children.len(), self.term());
         if self.borrow().children.len() > 0 {
             let merged_postings = {
@@ -236,7 +236,7 @@ impl<'n> TrieNode<'n> {
         // to repr(C) (autoalign)
         let header = TrieNodeHeader::from_trienode(&self, prefix, *postings_ptr);
         *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
-        *postings_ptr += self.borrow().postings.as_ref().unwrap().docs.len() as u32;
+        *postings_ptr += self.borrow().postings.as_ref().unwrap().docs.len() as DocId;
 
         if self.borrow().children.len() > 0 {
             // TODO assert that children_index and child_pointers are in ascending order
@@ -245,6 +245,7 @@ impl<'n> TrieNode<'n> {
 
             *dict_ptr += dict_out.write(typed_to_bytes(&children_index)).unwrap();
             *dict_ptr += dict_out.write(typed_to_bytes(&child_pointers)).unwrap();
+            *dict_ptr += dict_out.write(&[0,8][..align_to(*dict_ptr, mem::align_of::<TrieNodeHeader>())]).unwrap();
         }
 
         // if let Some(postings) = maybe_merged {
@@ -283,7 +284,7 @@ impl TrieNodeHeader {
         unsafe { slice::from_raw_parts(self as *const _ as *const u8, mem::size_of::<TrieNodeHeader>()) }
     }
 
-    fn from_trienode<'n>(n: &TrieNodeRef<'n>, prefix: &str, postings_ptr: u32) -> TrieNodeHeader {
+    fn from_trienode<'n>(n: &TrieNodeRef<'n>, prefix: &str, postings_ptr: DocId) -> TrieNodeHeader {
         let term = &n.borrow().t.term[prefix.len()..];
         let term_ptr = n.borrow().t.term_ptr + prefix.len();
 
@@ -295,7 +296,7 @@ impl TrieNodeHeader {
             term_ptr: term_ptr as u32,
             term_id: n.borrow().t.term_id,
             term_length: term.len() as u16,
-            num_postings: n.borrow().postings.as_ref().unwrap().docs.len() as u32,
+            num_postings: n.borrow().postings.as_ref().unwrap().docs.len() as u64,
             num_children: n.borrow().children.len() as u32,
             is_word: n.borrow().is_word,
         }

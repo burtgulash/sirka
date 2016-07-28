@@ -8,7 +8,7 @@ pub mod nutrie;
 
 
 pub type TermId = u32;
-pub type DocId = u32;
+pub type DocId = u64;
 
 #[derive(Clone, Debug)]
 pub struct Term {

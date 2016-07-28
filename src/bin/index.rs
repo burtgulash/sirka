@@ -26,14 +26,14 @@ fn process_docs(reader: BufReader<File>, term_serial: &mut TermId, doc_serial: &
         let l = line.unwrap();
         *doc_serial += 1;
 
-        let mut forward_index = Vec::<(TermId, u32)>::new();
+        let mut forward_index = Vec::<(TermId, DocId)>::new();
         for (position, s) in l.split(separator).enumerate() {
             if s.len() > 0 {
                 let term_id = *h.entry(s.into()).or_insert_with(|| {
                     *term_serial += 1;
                     *term_serial
                 });
-                forward_index.push((term_id, position as u32));
+                forward_index.push((term_id, position as DocId));
             }
         }
 

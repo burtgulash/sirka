@@ -86,15 +86,7 @@ fn daat<S: Sequence>(docs: S, tfs: S, term_headers: &[&TrieNodeHeader]) -> Vec<D
         }
     }).collect::<Vec<_>>();
 
-    // DEBUG
-    for slider in &sliders {
-        let mut scopy = slider.doc_slider.clone();
-        // while let Some(doc_id) = scopy.next() {
-        //     println!("doc_id in seq: {}", doc_id);
-        // }
-    }
-
-    // TODO sort'em sliders
+    // TODO sort'em sliders by their size ascending
     let mut result = Vec::new();
 
     let mut current_doc_id = 0;
