@@ -1,5 +1,5 @@
 pub use self::meta::IndexMeta;
-pub use self::docseq::{Sequence};
+pub use self::docseq::{Sequence,SequenceStorage,SequenceEncoder};
 pub use self::nutrie::TrieNodeHeader;
 
 pub mod meta;

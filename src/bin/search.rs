@@ -37,14 +37,14 @@ fn main() {
     let mut docs_reader = create_reader(indexdir, "docs");
     let mut docsbuf = Vec::new();
     docs_reader.read_to_end(&mut docsbuf).unwrap();
-    let docs = SliceSequence::new(bytes_to_typed(&docsbuf));
+    let docs = bytes_to_typed(&docsbuf).to_sequence();
 
     let mut tfs_reader = create_reader(indexdir, "tfs");
     let mut tfsbuf = Vec::new();
     tfs_reader.read_to_end(&mut tfsbuf).unwrap();
-    let tfs = SliceSequence::new(bytes_to_typed(&tfsbuf));
+    let tfs = bytes_to_typed(&tfsbuf).to_sequence();
 
-    if let Some(result) = query(&dict, docs, tfs, query_to_seach) {
+    if let Some(result) = query(&dict, &docs, &tfs, query_to_seach) {
         println!("Found in {} docs!", result.len());
     } else {
         println!("Not found!");
@@ -66,7 +66,7 @@ struct PostingSequences<DS: Sequence, TS: Sequence> {
 //    pos: S,
 }
 
-fn query<STRING, DS, TS>(dict: &StaticTrie, docs: DS, tfs: TS, q: &[STRING]) -> Option<Vec<DocId>> 
+fn query<STRING, DS, TS>(dict: &StaticTrie, docs: &DS, tfs: &TS, q: &[STRING]) -> Option<Vec<DocId>> 
     where STRING: AsRef<str>,
           DS: Sequence,
           TS: Sequence

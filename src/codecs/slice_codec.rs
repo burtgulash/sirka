@@ -1,8 +1,8 @@
 use std::{mem,slice,io};
 use types::{DocId,Sequence,SequenceStorage,SequenceEncoder};
 
-impl SequenceStorage for &[DocId] {
-    type Sequence: SliceSequence;
+impl<'a> SequenceStorage for &'a [DocId] {
+    type Sequence = SliceSequence<'a>;
 
     fn to_sequence(&self) -> Self::Sequence {
         SliceSequence::new(self)
