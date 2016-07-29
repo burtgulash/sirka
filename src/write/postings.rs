@@ -23,9 +23,8 @@ struct IteratorPointer {
 
 impl Ord for IteratorPointer {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Switch compare order because Rust's BinaryHeap is a maxheap
-        // We want a minheap
-        (&-(self.current_doc as isize)).cmp(&-(other.current_doc as isize))
+        // Switch compare order because Rust's BinaryHeap is a maxheap We want a minheap
+        self.current_doc.cmp(&other.current_doc).reverse()
     }
 }
 
