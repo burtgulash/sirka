@@ -12,6 +12,7 @@ pub trait Sequence {
 
 pub trait SequenceEncoder {
     fn write(&mut self, doc_id: DocId) -> io::Result<usize>;
+    fn write_sequence<S: Sequence>(&mut self, seq: S) -> io::Result<usize>;
 }
 
 pub trait SequenceStorage {

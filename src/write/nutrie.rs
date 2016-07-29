@@ -6,7 +6,7 @@ use std::ops::Deref;
 
 use write::postings::{Postings,PostingsStore};
 use types::{DocId,TermId,Term,TrieNodeHeader};
-use types::SequenceEncoder;
+use types::{SequenceEncoder,SequenceStorage};
 use ::util::*;
 
 
@@ -268,9 +268,7 @@ impl<'n> TrieNode<'n> {
         let postings = self_borrow.postings.as_ref().unwrap();
 
         // assert!(is_sorted_ascending(&postings.docs));
-        for &doc_id in &postings.docs {
-            enc.docs.write(doc_id).unwrap();
-        }
+        enc.docs.write_sequence((&postings.docs[..]).to_sequence()).unwrap();
         for &tf in &postings.tfs {
             enc.tfs.write(tf).unwrap();
         }

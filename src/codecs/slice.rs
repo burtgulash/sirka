@@ -26,6 +26,15 @@ impl<W: io::Write> SequenceEncoder for PlainEncoder<W> {
         let docbuf = unsafe{slice::from_raw_parts(&doc_id as *const _ as *const u8, mem::size_of::<DocId>())};
         self.writer.write(docbuf)
     }
+
+    fn write_sequence<S: Sequence>(&mut self, mut seq: S) -> io::Result<usize> {
+        let mut total_size = 0;
+        while let Some(doc_id) = seq.current() {
+            total_size += try!(self.write(doc_id));
+            seq.move_n(1); 
+        }
+        Ok(total_size)
+    }
 }
 
 
