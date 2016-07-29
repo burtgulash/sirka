@@ -21,7 +21,7 @@ fn main() {
     }
 
     let indexdir = Path::new(&args[1]);
-    let query = &args[2..];
+    let query_to_seach = &args[2..];
 
 
     let mut meta_reader = create_reader(indexdir, "meta");
@@ -37,16 +37,14 @@ fn main() {
     let mut docs_reader = create_reader(indexdir, "docs");
     let mut docsbuf = Vec::new();
     docs_reader.read_to_end(&mut docsbuf).unwrap();
-    let docs_sequence = bytes_to_typed(&docsbuf);
+    let docs = bytes_to_typed(&docsbuf);
 
     let mut tfs_reader = create_reader(indexdir, "tfs");
     let mut tfsbuf = Vec::new();
     tfs_reader.read_to_end(&mut tfsbuf).unwrap();
-    let tfs_sequence = bytes_to_typed(&tfsbuf);
+    let tfs = bytes_to_typed(&tfsbuf);
 
-    println!("Searching query: {:?}", query);
-    if let Some(term_headers) = find_terms(&dict, query) {
-        let result = daat(docs_sequence, tfs_sequence, &term_headers);
+    if let Some(result) = query(&dict, docs, tfs, query_to_seach) {
         println!("Found in {} docs!", result.len());
     } else {
         println!("Not found!");
@@ -60,10 +58,25 @@ macro_rules! tryopt {
     })
 }
 
-fn find_terms<'a, STRING: AsRef<str>>(dict: &'a StaticTrie, query: &[STRING]) -> Option<Vec<&'a TrieNodeHeader>> {
+fn query<STRING: AsRef<str>, SS: SequenceSpawner>(dict: &StaticTrie, docs: SS, tfs: SS, q: &[STRING]) -> Option<Vec<DocId>> {
+    let q = q.iter().map(|s| s.as_ref()).collect::<Vec<&str>>();
+    println!("Searching query: {:?}", &q);
+    let term_headers = tryopt!(find_terms(&dict, &q));
+
+    let mut term_sequences = spawn_term_sequences(docs, tfs, &term_headers);
+
+    // sort sequences ascending by their size to make daat skipping much faster
+    term_sequences.sort_by(|a, b| {
+        a.docs.remains().cmp(&b.docs.remains())
+    });
+
+    Some(search_daat(term_sequences))
+}
+
+fn find_terms<'a>(dict: &'a StaticTrie, query: &[&str]) -> Option<Vec<&'a TrieNodeHeader>> {
     let mut headers = Vec::new();
     for term in query.iter() {
-        match dict.find_term(term.as_ref(), true) {
+        match dict.find_term(term, true) {
             Some(header) => headers.push(header),
             None => return None,
         }
@@ -71,22 +84,28 @@ fn find_terms<'a, STRING: AsRef<str>>(dict: &'a StaticTrie, query: &[STRING]) ->
     Some(headers)
 }
 
+fn spawn_term_sequences<SS: SequenceSpawner>(docs: SS, tfs: SS, term_headers: &[&TrieNodeHeader]) -> Vec<PostingSequences<SS::Sequence>> {
+    term_headers.iter().enumerate().map(|(i, th)| {
+        println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
+        PostingSequences {
+            index: i,
+            term_id: th.term_id,
+            docs: docs.spawn(th.postings_ptr as usize, th.num_postings as usize),
+            tfs: tfs.spawn(th.postings_ptr as usize, th.num_postings as usize),
+        }
+    }).collect()
+}
+
 struct PostingSequences<S: Sequence> {
+    index: usize,
+    term_id: TermId,
     docs: S,
     tfs: S,
 //    pos: S,
 }
 
-fn daat<S: SequenceSpawner>(docs: S, tfs: S, term_headers: &[&TrieNodeHeader]) -> Vec<DocId> {
-    let mut term_sequences = term_headers.iter().map(|th| {
-        println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
-        PostingSequences {
-            docs: docs.spawn(th.postings_ptr as usize, th.num_postings as usize),
-            tfs: tfs.spawn(th.postings_ptr as usize, th.num_postings as usize),
-        }
-    }).collect::<Vec<_>>();
-
-    // TODO sort'em sliders by their size ascending
+// search daat = search document at a time
+fn search_daat<S: Sequence>(mut term_sequences: Vec<PostingSequences<S>>) -> Vec<DocId> {
     let mut result = Vec::new();
 
     let mut current_doc_id = 0;
@@ -117,7 +136,7 @@ fn daat<S: SequenceSpawner>(docs: S, tfs: S, term_headers: &[&TrieNodeHeader]) -
         // Advance all sliders to next doc and record
         // the maximum doc_id for each slider
         let mut max_doc_id = current_doc_id;
-        for sequence in &mut term_sequences {
+        for sequence in term_sequences.iter_mut() {
             sequence.docs.skip_n(1);
             if let Some(next_doc_id) = sequence.docs.current() {
                 if next_doc_id > max_doc_id {

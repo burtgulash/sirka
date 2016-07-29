@@ -30,6 +30,10 @@ impl<'a> Sequence for SliceSequence<'a> {
         // No need to put anything to read only sequence
     }
 
+    fn remains(&self) -> usize {
+        self.seq.len() - self.position
+    }
+
     fn current(&self) -> Option<DocId> {
         if self.position < self.seq.len() {
             Some(self.seq[self.position])

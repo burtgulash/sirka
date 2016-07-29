@@ -8,6 +8,7 @@ pub trait SequenceSpawner {
 
 pub trait Sequence: Clone {
     fn put(&mut self);
+    fn remains(&self) -> usize;
     fn skip_to(&mut self, doc_id: DocId);
     fn skip_n(&mut self, n: usize);
     fn current(&self) -> Option<DocId>;
