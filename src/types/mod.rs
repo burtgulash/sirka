@@ -1,5 +1,5 @@
 pub use self::meta::IndexMeta;
-pub use self::docseq::{Sequence,SequenceSlider};
+pub use self::docseq::{Sequence,SequenceSpawner};
 pub use self::nutrie::TrieNodeHeader;
 
 pub mod meta;

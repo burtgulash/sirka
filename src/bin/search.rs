@@ -71,18 +71,18 @@ fn find_terms<'a, STRING: AsRef<str>>(dict: &'a StaticTrie, query: &[STRING]) ->
     Some(headers)
 }
 
-struct PostingSlider<S: SequenceSlider> {
-    doc_slider: S,
-    tfs_slider: S,
-//    pos_slider: S,
+struct PostingSequences<S: Sequence> {
+    docs: S,
+    tfs: S,
+//    pos: S,
 }
 
-fn daat<S: Sequence>(docs: S, tfs: S, term_headers: &[&TrieNodeHeader]) -> Vec<DocId> {
-    let mut sliders = term_headers.iter().map(|th| {
+fn daat<S: SequenceSpawner>(docs: S, tfs: S, term_headers: &[&TrieNodeHeader]) -> Vec<DocId> {
+    let mut term_sequences = term_headers.iter().map(|th| {
         println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
-        PostingSlider {
-            doc_slider: docs.slider(th.postings_ptr as usize, th.num_postings as usize),
-            tfs_slider: tfs.slider(th.postings_ptr as usize, th.num_postings as usize),
+        PostingSequences {
+            docs: docs.spawn(th.postings_ptr as usize, th.num_postings as usize),
+            tfs: tfs.spawn(th.postings_ptr as usize, th.num_postings as usize),
         }
     }).collect::<Vec<_>>();
 
@@ -92,9 +92,10 @@ fn daat<S: Sequence>(docs: S, tfs: S, term_headers: &[&TrieNodeHeader]) -> Vec<D
     let mut current_doc_id = 0;
     'merge: loop {
         let mut i = 0;
-        while i < sliders.len() {
-            let mut slider = &mut sliders[i];
-            if let Some(doc_id) = slider.doc_slider.skip_to(current_doc_id) {
+        while i < term_sequences.len() {
+            let mut current_seq = &mut term_sequences[i];
+            current_seq.docs.skip_to(current_doc_id);
+            if let Some(doc_id) = current_seq.docs.current() {
                 if doc_id > current_doc_id {
                     // Aligning failed. Start from first term
                     i = 0;
@@ -116,8 +117,9 @@ fn daat<S: Sequence>(docs: S, tfs: S, term_headers: &[&TrieNodeHeader]) -> Vec<D
         // Advance all sliders to next doc and record
         // the maximum doc_id for each slider
         let mut max_doc_id = current_doc_id;
-        for slider in &mut sliders {
-            if let Some(next_doc_id) = slider.doc_slider.next() {
+        for sequence in &mut term_sequences {
+            sequence.docs.skip_n(1);
+            if let Some(next_doc_id) = sequence.docs.current() {
                 if next_doc_id > max_doc_id {
                     max_doc_id = next_doc_id;
                 }

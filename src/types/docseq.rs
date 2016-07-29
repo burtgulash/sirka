@@ -1,20 +1,16 @@
 use std::io;
 use types::*;
 
-pub trait Sequence {
-    type Slider: SequenceSlider;
-    fn slider(&self, start: usize, len: usize) -> Self::Slider;
+pub trait SequenceSpawner {
+    type Sequence: Sequence;
+    fn spawn(&self, start: usize, len: usize) -> Self::Sequence;
 }
 
-pub trait SequenceSlider: Clone {
-    fn next(&mut self) -> Option<DocId>;
-    fn skip_to(&mut self, doc_id: DocId) -> Option<DocId>;
-    fn skip_n(&mut self, n: usize) -> Option<DocId>;
-    fn index(&self) -> usize;
-}
-
-pub trait SequenceWriter {
-    fn write_doc(&mut self, doc_id: DocId) -> io::Result<()>;
-    fn finish_docs(&mut self) -> io::Result<()>;
-    //fn write_index(&mut self) -> io::Result<()>;
+pub trait Sequence: Clone {
+    fn put(&mut self);
+    fn skip_to(&mut self, doc_id: DocId);
+    fn skip_n(&mut self, n: usize);
+    fn current(&self) -> Option<DocId>;
+    fn current_position(&self) -> usize;
+    fn write_current(&self, w: &mut io::Write) -> io::Result<usize>;
 }
