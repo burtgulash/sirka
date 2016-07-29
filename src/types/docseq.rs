@@ -1,3 +1,4 @@
+use std::io;
 use types::*;
 
 pub trait Sequence {
@@ -8,3 +9,16 @@ pub trait Sequence {
     fn current_position(&self) -> usize;
     fn subsequence(&self, start: usize, len: usize) -> Self;
 }
+
+pub trait SequenceEncoder {
+    fn write(&mut self, doc_id: DocId) -> io::Result<usize>;
+}
+
+pub trait SequenceStorage {
+    type Sequence: Sequence;
+    fn to_sequence(&self) -> Self::Sequence;
+}
+
+// pub trait SequenceDecoder {
+//     // TODO fn read() 
+// }
