@@ -268,7 +268,7 @@ impl<'n> TrieNode<'n> {
         if let Some(ref postings) = self.borrow().postings {
             *postings_ptr += self.postings_len() as DocId;
 
-            // assert!(is_sorted_ascending(&postings.docs));
+            assert!(is_sorted_ascending(&postings.docs));
             enc.docs.write_sequence((&postings.docs[..]).to_sequence()).unwrap();
             for &tf in &postings.tfs {
                 enc.tfs.write(tf).unwrap();

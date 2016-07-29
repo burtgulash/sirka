@@ -105,10 +105,17 @@ mod tests {
     #[test]
     fn test_sequence() {
         let docs = vec![5,7,3,9,45,1,0,4,7];
-        let mut seq = (&docs[..]).to_sequence();
-        while let Some(doc) = seq.next() {
+        let seq = (&docs[..]).to_sequence();
+
+        let subseq_len = 5;
+        let mut subseq = seq.subsequence(2, subseq_len);
+
+        let mut count = 0;
+        while let Some(doc) = subseq.next() {
+            count += 1;
             println!("Next doc: {}", doc);
         }
+        assert_eq!(count, subseq_len);
         println!("CUUU");
     }
 }

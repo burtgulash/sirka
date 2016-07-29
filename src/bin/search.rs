@@ -117,6 +117,7 @@ fn search_daat<DS, TS>(mut term_sequences: Vec<PostingSequences<DS, TS>>) -> Vec
         while i < term_sequences.len() {
             let mut current_seq = &mut term_sequences[i];
             if let Some(doc_id) = current_seq.docs.skip_to(current_doc_id) {
+                println!("Let: {}", current_doc_id);
                 if doc_id > current_doc_id {
                     // Aligning failed. Start from first term
                     i = 0;
@@ -140,6 +141,7 @@ fn search_daat<DS, TS>(mut term_sequences: Vec<PostingSequences<DS, TS>>) -> Vec
         let mut max_doc_id = current_doc_id;
         for sequence in term_sequences.iter_mut() {
             if let Some(next_doc_id) = sequence.docs.next() {
+                println!("Found and skip: {}", next_doc_id);
                 if next_doc_id > max_doc_id {
                     max_doc_id = next_doc_id;
                 }
