@@ -71,7 +71,7 @@ mod tests {
         let mut tb = TermBuf::new();
         let max = 31;
         for i in 1..2000 {
-            tb.add_doc(i % max, i);
+            tb.add_doc(i % max, i as u64);
         }
         let chosen_term_id = 25;
         for doc_id in tb.get_termbuf(chosen_term_id).unwrap() {
