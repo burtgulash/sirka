@@ -37,12 +37,12 @@ fn main() {
     let mut docs_reader = create_reader(indexdir, "docs");
     let mut docsbuf = Vec::new();
     docs_reader.read_to_end(&mut docsbuf).unwrap();
-    let docs = bytes_to_typed(&docsbuf);
+    let docs = SliceSequence::new(bytes_to_typed(&docsbuf));
 
     let mut tfs_reader = create_reader(indexdir, "tfs");
     let mut tfsbuf = Vec::new();
     tfs_reader.read_to_end(&mut tfsbuf).unwrap();
-    let tfs = bytes_to_typed(&tfsbuf);
+    let tfs = SliceSequence::new(bytes_to_typed(&tfsbuf));
 
     if let Some(result) = query(&dict, docs, tfs, query_to_seach) {
         println!("Found in {} docs!", result.len());
@@ -58,12 +58,32 @@ macro_rules! tryopt {
     })
 }
 
-fn query<STRING: AsRef<str>, SS: SequenceSpawner>(dict: &StaticTrie, docs: SS, tfs: SS, q: &[STRING]) -> Option<Vec<DocId>> {
+struct PostingSequences<DS: Sequence, TS: Sequence> {
+    index: usize,
+    term_id: TermId,
+    docs: DS,
+    tfs: TS,
+//    pos: S,
+}
+
+fn query<STRING, DS, TS>(dict: &StaticTrie, docs: DS, tfs: TS, q: &[STRING]) -> Option<Vec<DocId>> 
+    where STRING: AsRef<str>,
+          DS: Sequence,
+          TS: Sequence
+{
     let q = q.iter().map(|s| s.as_ref()).collect::<Vec<&str>>();
     println!("Searching query: {:?}", &q);
     let term_headers = tryopt!(find_terms(&dict, &q));
 
-    let mut term_sequences = spawn_term_sequences(docs, tfs, &term_headers);
+    let mut term_sequences = term_headers.iter().enumerate().map(|(i, th)| {
+        println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
+        PostingSequences {
+            index: i,
+            term_id: th.term_id,
+            docs: docs.subsequence(th.postings_ptr as usize, th.num_postings as usize),
+            tfs: tfs.subsequence(th.postings_ptr as usize, th.num_postings as usize),
+        }
+    }).collect::<Vec<_>>();
 
     // sort sequences ascending by their size to make daat skipping much faster
     term_sequences.sort_by(|a, b| {
@@ -84,28 +104,11 @@ fn find_terms<'a>(dict: &'a StaticTrie, query: &[&str]) -> Option<Vec<&'a TrieNo
     Some(headers)
 }
 
-fn spawn_term_sequences<SS: SequenceSpawner>(docs: SS, tfs: SS, term_headers: &[&TrieNodeHeader]) -> Vec<PostingSequences<SS::Sequence>> {
-    term_headers.iter().enumerate().map(|(i, th)| {
-        println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
-        PostingSequences {
-            index: i,
-            term_id: th.term_id,
-            docs: docs.spawn(th.postings_ptr as usize, th.num_postings as usize),
-            tfs: tfs.spawn(th.postings_ptr as usize, th.num_postings as usize),
-        }
-    }).collect()
-}
-
-struct PostingSequences<S: Sequence> {
-    index: usize,
-    term_id: TermId,
-    docs: S,
-    tfs: S,
-//    pos: S,
-}
-
 // search daat = search document at a time
-fn search_daat<S: Sequence>(mut term_sequences: Vec<PostingSequences<S>>) -> Vec<DocId> {
+fn search_daat<DS, TS>(mut term_sequences: Vec<PostingSequences<DS, TS>>) -> Vec<DocId> 
+    where DS: Sequence,
+          TS: Sequence
+{
     let mut result = Vec::new();
 
     let mut current_doc_id = 0;
@@ -113,7 +116,7 @@ fn search_daat<S: Sequence>(mut term_sequences: Vec<PostingSequences<S>>) -> Vec
         let mut i = 0;
         while i < term_sequences.len() {
             let mut current_seq = &mut term_sequences[i];
-            current_seq.docs.skip_to(current_doc_id);
+            current_seq.docs.move_to(current_doc_id);
             if let Some(doc_id) = current_seq.docs.current() {
                 if doc_id > current_doc_id {
                     // Aligning failed. Start from first term
@@ -137,7 +140,7 @@ fn search_daat<S: Sequence>(mut term_sequences: Vec<PostingSequences<S>>) -> Vec
         // the maximum doc_id for each slider
         let mut max_doc_id = current_doc_id;
         for sequence in term_sequences.iter_mut() {
-            sequence.docs.skip_n(1);
+            sequence.docs.move_n(1);
             if let Some(next_doc_id) = sequence.docs.current() {
                 if next_doc_id > max_doc_id {
                     max_doc_id = next_doc_id;
