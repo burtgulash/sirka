@@ -1,3 +1,3 @@
-pub use self::slice_codec::*;
+pub use self::slice::*;
 
-pub mod slice_codec;
+pub mod slice;
