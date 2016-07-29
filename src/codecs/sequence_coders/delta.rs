@@ -1,15 +1,15 @@
 use types::*;
 
-struct CumSequence<S> {
+struct DeltaEncoder<S> {
     seq: S,
     last: DocId,
 }
 
-impl<S: Sequence> CumSequence<S> {
+impl<S: Sequence> DeltaEncoder<S> {
     fn new(mut seq: S) -> Self {
         assert!(seq.remains() > 0);
         let last = seq.next().unwrap();
-        CumSequence {
+        DeltaEncoder {
             seq: seq,
             last: last,
         }
@@ -23,10 +23,12 @@ macro_rules! tryopt {
     })
 }
 
-impl<S: Sequence> Sequence for CumSequence<S> {
+impl<S: Sequence> Sequence for DeltaEncoder<S> {
     fn next(&mut self) -> Option<DocId> {
         if let Some(next) = self.seq.next() {
-            Some(next - self.last)
+            let last = self.last;
+            self.last = next;
+            Some(next - last)
         } else {
             None
         }
@@ -41,7 +43,7 @@ impl<S: Sequence> Sequence for CumSequence<S> {
     }
 
     fn skip_to(&mut self, doc_id: DocId) -> Option<DocId> {
-        panic!("Can't use move_to on cumulative sequence");
+        panic!("Can't skip in sequence encoder");
     }
 
     fn skip_n(&mut self, n: usize) -> Option<DocId> {
@@ -60,22 +62,22 @@ impl<S: Sequence> Sequence for CumSequence<S> {
 
 #[cfg(test)]
 mod tests {
-    use super::CumSequence;
+    use super::DeltaEncoder;
     use types::{Sequence,SequenceStorage};
 
     #[test]
-    fn test_cum_sequence() {
+    fn test_delta_sequence() {
         let docs = vec![3,4,7,9,10,14,15,18,25,27,33,50,55,100];
         let subseq_len = 7;
-        let cumseq1 = CumSequence::new((&docs[..]).to_sequence());
-        let mut cumseq = cumseq1.subsequence(3, subseq_len);
-        println!("REMAINS: {}", cumseq.remains());
-        assert_eq!(subseq_len, cumseq.remains());
+        let delta_seq1 = DeltaEncoder::new((&docs[..]).to_sequence());
+        let mut delta_seq = delta_seq1.subsequence(0, subseq_len);
+        println!("REMAINS: {}", delta_seq.remains());
+        assert_eq!(subseq_len, delta_seq.remains());
 
         let mut count = 0;
-        while let Some(doc) = cumseq.next() {
+        while let Some(doc) = delta_seq.next() {
             count += 1;
-            println!("Next doc: {}", doc);
+            println!("Next delta doc: {}", doc);
         }
         assert_eq!(subseq_len, count);
     }

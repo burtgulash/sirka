@@ -1,2 +1,4 @@
-use self::cum_sequence::*;
-pub mod cum_sequence;
+use self::delta::*;
+use self::cum::*;
+pub mod delta;
+pub mod cum;
