@@ -29,9 +29,8 @@ impl<W: io::Write> SequenceEncoder for PlainEncoder<W> {
 
     fn write_sequence<S: Sequence>(&mut self, mut seq: S) -> io::Result<usize> {
         let mut total_size = 0;
-        while let Some(doc_id) = seq.current() {
+        while let Some(doc_id) = seq.next() {
             total_size += try!(self.write(doc_id));
-            seq.move_n(1); 
         }
         Ok(total_size)
     }
@@ -51,12 +50,20 @@ impl<'a> SliceSequence<'a> {
             position: 0,
         }
     }
+
+    fn return_current(&self) -> Option<DocId> {
+        if self.position < self.seq.len() {
+            Some(self.seq[self.position])
+        } else {
+            None
+        }
+    }
 }
 
 impl<'a> Sequence for SliceSequence<'a> {
     fn subsequence(&self, start: usize, len: usize) -> Self {
         let mut sub = SliceSequence::new(&self.seq[..start+len]);
-        sub.move_n(start);
+        sub.skip_n(start);
         sub
     }
 
@@ -64,24 +71,22 @@ impl<'a> Sequence for SliceSequence<'a> {
         self.seq.len() - self.position
     }
 
-    fn current(&self) -> Option<DocId> {
-        if self.position < self.seq.len() {
-            Some(self.seq[self.position])
-        } else {
-            None
-        }
+    fn next(&mut self) -> Option<DocId> {
+        self.skip_n(1)
     }
 
-    fn move_to(&mut self, doc_id: DocId) {
+    fn skip_to(&mut self, doc_id: DocId) -> Option<DocId> {
         while self.position < self.seq.len()
            && self.seq[self.position] < doc_id
         {
             self.position += 1;
         }
+        self.return_current()
     }
 
-    fn move_n(&mut self, n: usize) {
+    fn skip_n(&mut self, n: usize) -> Option<DocId> {
         self.position += n;
+        self.return_current()
     }
 
     fn current_position(&self) -> usize {
