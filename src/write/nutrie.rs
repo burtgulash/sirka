@@ -65,7 +65,7 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
 
         // align parent and current pointers
         while prefix_len < parent.term().len() {
-            current.flush(&parent, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
+            current.flush(&parent, false, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
             current = parent.clone();
             parent = parent.parent().unwrap();
         }
@@ -73,7 +73,7 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
         if prefix_len >= current.term().len() {
             parent = current.clone();
         } else if prefix_len == parent.term().len() {
-            current.flush(&parent, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
+            current.flush(&parent, false, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
         } else if prefix_len > parent.term().len() {
             //let parent_term_ptr = current.borrow().term_ptr;
             term_serial += 1;
@@ -96,7 +96,7 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
             };
 
             // Flush with fork_node as a new parent
-            current.flush(&fork_node, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
+            current.flush(&fork_node, false, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
 
             parent = current.clone();
             current = fork_node.clone();
@@ -118,17 +118,16 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
         ));
     }
 
-    let mut root_ptr;
-    loop {
-        root_ptr = dict_ptr;
-        current.flush(&parent, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
+    while let Some(parent_parent) = parent.parent() {
+        current.flush(&parent, false, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
         current = parent.clone();
-        match parent.parent() {
-            Some(node) => parent = node,
-            None => break,
-        };
+        parent = parent_parent;
     }
-    assert!(current.parent().is_none());
+
+    let root_ptr = dict_ptr;
+    assert!(current.parent().unwrap().term_id() == 0);
+    // Flush root2 node
+    current.flush(&parent, true, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
 
     for t in terms.iter() {
         dict_out.write(&t.term.as_bytes()).unwrap();
@@ -201,6 +200,14 @@ impl<'n> TrieNode<'n> {
         self.0.borrow_mut()
     }
 
+    fn postings_len(&self) -> usize {
+        if let Some(ref postings) = self.borrow().postings {
+            postings.docs.len()
+        } else {
+            0
+        }
+    }
+
     fn create_child_pointers(&self) -> Vec<u32> {
         self.borrow().children.iter().map(|ch| {
             ch.borrow().pointer_in_dictbuf.expect("This node must be written by now") as u32
@@ -218,7 +225,7 @@ impl<'n> TrieNode<'n> {
         }).collect()
     }
 
-    fn flush<W, DE, TE, PE>(&self, parent: &Self, dict_ptr: &mut usize, postings_ptr: &mut DocId, 
+    fn flush<W, DE, TE, PE>(&self, parent: &Self, isroot: bool, dict_ptr: &mut usize, postings_ptr: &mut DocId, 
                             dict_out: &mut W, enc: &mut PostingsEncoders<DE, TE, PE>)
         where W: Write,
               DE: SequenceEncoder,
@@ -226,7 +233,7 @@ impl<'n> TrieNode<'n> {
               PE: SequenceEncoder
     {
         // println!("flushing node with {} children: term: '{}'", self_borrow.children.len(), self.term());
-        if self.borrow().children.len() > 0 {
+        if !isroot && self.borrow().children.len() > 0 {
             let merged_postings = {
                 let selfb = self.borrow();
                 assert!(selfb.children.len() <= u32::max_value() as usize);
@@ -244,9 +251,8 @@ impl<'n> TrieNode<'n> {
 
         // NOTE aligning is not needed when Header, child index and child pointers are aligned
         // to repr(C) (autoalign)
-        let header = TrieNodeHeader::from_trienode(&self, prefix, *postings_ptr);
+        let header = TrieNodeHeader::from_trienode(TrieNode(self.0.clone()), prefix, *postings_ptr);
         *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
-        *postings_ptr += self.borrow().postings.as_ref().unwrap().docs.len() as DocId;
 
         if self.borrow().children.len() > 0 {
             // TODO assert that children_index and child_pointers are in ascending order
@@ -258,23 +264,22 @@ impl<'n> TrieNode<'n> {
             *dict_ptr += dict_out.write(&[0,8][..align_to(*dict_ptr, mem::align_of::<TrieNodeHeader>())]).unwrap();
         }
 
-        // if let Some(postings) = maybe_merged {
-        //     self.borrow_mut().postings = Some(postings);
-        // }
+        // let self_borrow = self.borrow();
+        if let Some(ref postings) = self.borrow().postings {
+            *postings_ptr += self.postings_len() as DocId;
+
+            // assert!(is_sorted_ascending(&postings.docs));
+            enc.docs.write_sequence((&postings.docs[..]).to_sequence()).unwrap();
+            for &tf in &postings.tfs {
+                enc.tfs.write(tf).unwrap();
+            }
+            for &position in &postings.positions {
+                enc.positions.write(position).unwrap();
+            }
+        }
+
         self.borrow_mut().children.clear();
         self.borrow_mut().pointer_in_dictbuf = Some(dict_position);
-
-        let self_borrow = self.borrow();
-        let postings = self_borrow.postings.as_ref().unwrap();
-
-        // assert!(is_sorted_ascending(&postings.docs));
-        enc.docs.write_sequence((&postings.docs[..]).to_sequence()).unwrap();
-        for &tf in &postings.tfs {
-            enc.tfs.write(tf).unwrap();
-        }
-        for &position in &postings.positions {
-            enc.positions.write(position).unwrap();
-        }
     }
 }
 
@@ -298,19 +303,16 @@ impl TrieNodeHeader {
         unsafe { slice::from_raw_parts(self as *const _ as *const u8, mem::size_of::<TrieNodeHeader>()) }
     }
 
-    fn from_trienode<'n>(n: &TrieNodeRef<'n>, prefix: &str, postings_ptr: DocId) -> TrieNodeHeader {
-        let term = &n.borrow().t.term[prefix.len()..];
-        let term_ptr = n.borrow().t.term_ptr + prefix.len();
-
+    fn from_trienode<'n>(n: TrieNode<'n>, prefix: &str, postings_ptr: DocId) -> TrieNodeHeader {
         // TODO Handle longer strings by truncating
-        assert!(term.len() < u16::max_value() as usize);
+        assert!(n.term().len() < u16::max_value() as usize);
 
         TrieNodeHeader {
             postings_ptr: postings_ptr,
-            term_ptr: term_ptr as u32,
+            term_ptr: (n.term_ptr() + prefix.len()) as u32,
             term_id: n.borrow().t.term_id,
-            term_length: term.len() as u16,
-            num_postings: n.borrow().postings.as_ref().unwrap().docs.len() as u64,
+            term_length: n.term().len() as u16,
+            num_postings: n.postings_len() as u64,
             num_children: n.borrow().children.len() as u32,
             is_word: n.borrow().is_word,
         }
