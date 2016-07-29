@@ -2,12 +2,13 @@ use types::*;
 
 struct CumSequence<S> {
     seq: S,
-    last: Option<DocId>,
+    last: DocId,
 }
 
 impl<S: Sequence> CumSequence<S> {
     fn new(mut seq: S) -> Self {
-        let last = seq.next();
+        assert!(seq.remains() > 0);
+        let last = seq.next().unwrap();
         CumSequence {
             seq: seq,
             last: last,
@@ -25,12 +26,10 @@ macro_rules! tryopt {
 impl<S: Sequence> Sequence for CumSequence<S> {
     fn next(&mut self) -> Option<DocId> {
         if let Some(next) = self.seq.next() {
-            if let Some(last) = self.last {
-                self.last = Some(next);
-                return Some(next - last);
-            }
+            Some(next - self.last)
+        } else {
+            None
         }
-        None
     }
 
     fn current_position(&self) -> Option<usize> {
@@ -46,8 +45,12 @@ impl<S: Sequence> Sequence for CumSequence<S> {
     }
 
     fn skip_n(&mut self, n: usize) -> Option<DocId> {
-        self.last = self.seq.skip_n(n - 1);
-        self.next()
+        if let Some(last) = self.seq.skip_n(n - 1) {
+            self.last = last;
+            self.next()
+        } else {
+            None
+        }
     }
 
     fn subsequence(&self, start: usize, len: usize) -> Self {
@@ -64,7 +67,7 @@ mod tests {
     fn test_cum_sequence() {
         let docs = vec![3,4,7,9,10,14,15,18,25,27,33,50,55,100];
         let subseq_len = 7;
-        let mut cumseq1 = CumSequence::new((&docs[..]).to_sequence());
+        let cumseq1 = CumSequence::new((&docs[..]).to_sequence());
         let mut cumseq = cumseq1.subsequence(3, subseq_len);
         println!("REMAINS: {}", cumseq.remains());
         assert_eq!(subseq_len, cumseq.remains());
