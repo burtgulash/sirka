@@ -42,10 +42,6 @@ impl<S: Sequence> Sequence for DeltaEncoder<S> {
         self.seq.remains()
     }
 
-    fn skip_to(&mut self, doc_id: DocId) -> Option<DocId> {
-        panic!("Can't skip in sequence encoder");
-    }
-
     fn skip_n(&mut self, n: usize) -> Option<DocId> {
         if let Some(last) = self.seq.skip_n(n - 1) {
             self.last = last;

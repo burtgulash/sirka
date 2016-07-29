@@ -67,6 +67,10 @@ impl<'a> Sequence for SliceSequence<'a> {
         sub
     }
 
+    fn next(&mut self) -> Option<DocId> {
+        self.skip_n(1)
+    }
+
     fn remains(&self) -> usize {
         self.seq.len() - self.next_position
     }

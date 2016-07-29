@@ -39,21 +39,6 @@ impl<S: Sequence> Sequence for CumEncoder<S> {
         self.seq.remains()
     }
 
-    fn skip_to(&mut self, doc_id: DocId) -> Option<DocId> {
-        panic!("can't skip cumulative encoding");
-    }
-
-    fn skip_n(&mut self, n: usize) -> Option<DocId> {
-        let mut next = None;
-        for _ in 0..n {
-            next = self.next();
-            if next.is_none() {
-                break;
-            }
-        }
-        next
-    }
-
     fn subsequence(&self, start: usize, len: usize) -> Self {
         Self::new(0, self.seq.subsequence(start, len))
     }

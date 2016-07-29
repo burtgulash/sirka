@@ -3,13 +3,29 @@ use types::*;
 
 pub trait Sequence {
     fn remains(&self) -> usize;
-    fn skip_to(&mut self, doc_id: DocId) -> Option<DocId>;
-    fn skip_n(&mut self, n: usize) -> Option<DocId>;
     fn current_position(&self) -> Option<usize>;
     fn subsequence(&self, start: usize, len: usize) -> Self;
+    fn next(&mut self) -> Option<DocId>;
 
-    fn next(&mut self) -> Option<DocId> {
-        self.skip_n(1)
+    fn skip_n(&mut self, mut n: usize) -> Option<DocId> {
+        let mut next = None;
+        while n > 0 {
+            next = self.next();
+            if next.is_none() {
+                break;
+            }
+            n -= 1;
+        }
+        next
+    }
+
+    fn skip_to(&mut self, doc_id: DocId) -> Option<DocId> {
+        while let Some(x) = self.next() {
+            if x >= doc_id {
+                return Some(x)
+            }
+        }
+        None
     }
 }
 
