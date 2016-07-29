@@ -16,7 +16,8 @@ fn create_writer(directory: &str, filename: &str) -> BufWriter<File> {
     BufWriter::new(file)
 }
 
-fn process_docs(reader: BufReader<File>, term_serial: &mut TermId, doc_serial: &mut DocId, separator: &str) -> (Vec<Term>, (TermBuf, TermBuf, TermBuf)) {
+fn process_docs(reader: BufReader<File>, term_serial: &mut TermId, doc_serial: &mut DocId, separator: &str) -> (Vec<Term>, (TermBuf, TermBuf, TermBuf))
+{
     let mut h = HashMap::<String, TermId>::new();
     let mut docbufs = TermBuf::new();
     let mut tfbufs = TermBuf::new();
@@ -99,12 +100,13 @@ fn main() {
     let mut postings = (&mut docbufs, &mut tfbufs, &mut posbufs);
 
     println!("Creating Prefix Trie");
+    let mut enc = PostingsEncoders {
+        docs: PlainEncoder::new(create_writer(&dirname, "docs")),
+        tfs: PlainEncoder::new(create_writer(&dirname, "tfs")),
+        positions: PlainEncoder::new(create_writer(&dirname, "positions")),
+    };
     let (written_terms, dict_size, root_ptr, terms_size) = create_trie(term_serial, &terms, &mut postings,
-        &mut create_writer(&dirname, "dict"),
-        &mut create_writer(&dirname, "docs"),
-        &mut create_writer(&dirname, "tfs"),
-        &mut create_writer(&dirname, "positions"),
-    );
+                                                                       &mut create_writer(&dirname, "dict"), &mut enc);
 
     let meta = IndexMeta {
         dict_size: dict_size as u64,

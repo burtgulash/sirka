@@ -9,8 +9,16 @@ impl<'a> SequenceStorage for &'a [DocId] {
     }
 }
 
-struct PlainEncoder<W> {
+pub struct PlainEncoder<W> {
     writer: W,
+}
+
+impl<W: io::Write> PlainEncoder<W> {
+    pub fn new(writer: W) -> PlainEncoder<W> {
+        PlainEncoder {
+            writer: writer
+        }
+    }
 }
 
 impl<W: io::Write> SequenceEncoder for PlainEncoder<W> {
