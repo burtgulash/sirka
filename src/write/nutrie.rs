@@ -6,9 +6,9 @@ use std::ops::Deref;
 
 use write::postings::{Postings,PostingsStore};
 use types::{DocId,TermId,Term,TrieNodeHeader};
-use types::{SequenceEncoder,SequenceStorage};
-use codecs::{DeltaEncoder};
-use ::util::*;
+use types::{Sequence,SequenceEncoder,SequenceStorage};
+use codecs::{DeltaEncoder,CumEncoder};
+use util::*;
 
 
 #[derive(Clone)]
@@ -57,6 +57,7 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
     let mut term_ptr = 0;
     let mut dict_ptr = 0;
     let mut postings_ptr = 0;
+    let mut last_tf = 0;
 
     for &Term{ref term, term_id} in terms.iter() {
         let prefix_len = common_prefix_len(current.term(), term);
@@ -66,7 +67,7 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
 
         // align parent and current pointers
         while prefix_len < parent.term().len() {
-            current.flush(&parent, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
+            current.flush(&parent, &mut dict_ptr, &mut postings_ptr, &mut last_tf, dict_out, enc);
             current = parent.clone();
             parent = parent.parent().unwrap();
         }
@@ -74,7 +75,7 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
         if prefix_len >= current.term().len() {
             parent = current.clone();
         } else if prefix_len == parent.term().len() {
-            current.flush(&parent, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
+            current.flush(&parent, &mut dict_ptr, &mut postings_ptr, &mut last_tf, dict_out, enc);
         } else if prefix_len > parent.term().len() {
             //let parent_term_ptr = current.borrow().term_ptr;
             term_serial += 1;
@@ -92,7 +93,7 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
             );
 
             // Flush with fork_node as a new parent
-            current.flush(&fork_node, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
+            current.flush(&fork_node, &mut dict_ptr, &mut postings_ptr, &mut last_tf, dict_out, enc);
 
             parent = current.clone();
             current = fork_node.clone();
@@ -115,7 +116,7 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
     }
 
     while let Some(parent_parent) = parent.parent() {
-        current.flush(&parent, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
+        current.flush(&parent, &mut dict_ptr, &mut postings_ptr, &mut last_tf, dict_out, enc);
         current = parent.clone();
         parent = parent_parent;
     }
@@ -123,7 +124,7 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
     let root_ptr = dict_ptr;
     assert!(current.parent().unwrap().term_id() == 0);
     // Flush root2 node
-    current.flush(&parent, &mut dict_ptr, &mut postings_ptr, dict_out, enc);
+    current.flush(&parent, &mut dict_ptr, &mut postings_ptr, &mut last_tf, dict_out, enc);
 
     for t in terms.iter() {
         dict_out.write(&t.term.as_bytes()).unwrap();
@@ -230,7 +231,7 @@ impl<'n> TrieNode<'n> {
         }).collect()
     }
 
-    fn flush<W, DE, TE, PE>(&self, parent: &Self, dict_ptr: &mut usize, postings_ptr: &mut DocId,
+    fn flush<W, DE, TE, PE>(&self, parent: &Self, dict_ptr: &mut usize, postings_ptr: &mut DocId, last_tf: &mut DocId,
                             dict_out: &mut W, enc: &mut PostingsEncoders<DE, TE, PE>)
         where W: Write,
               DE: SequenceEncoder,
@@ -280,20 +281,24 @@ impl<'n> TrieNode<'n> {
 
         macro_rules! write_postings {
             ($postings:expr) => {
-                *postings_ptr += $postings.docs.len() as DocId;
+                assert!(is_sorted_ascending(&$postings.docs)); // TODO disable this for performance?
 
-                // assert!(is_sorted_ascending(&postings.docs));
-                let _ = enc.docs.write_sequence((&$postings.docs).to_sequence()).unwrap();
-                //let _ = enc.tfs.write_sequence()
+                let docs = (&$postings.docs).to_sequence();
+                let tfs = CumEncoder::new(*last_tf, (&$postings.tfs).to_sequence());
 
-                let mut start = 0;
-                let mut cum = 0;
-                for tf in $postings.tfs.iter().cloned() {
-                    cum += tf as usize;
-                    let positions = DeltaEncoder::new((&$postings.positions[start..cum]).to_sequence());
+                let _ = enc.tfs.write_sequence(tfs).unwrap();
+                let _ = enc.docs.write_sequence(docs).unwrap();
+
+                let mut start_tf = 0;
+                let mut tfs2 = CumEncoder::new(start_tf, (&$postings.tfs).to_sequence());
+                while let Some(cum_tf) = tfs2.next() {
+                    let positions = DeltaEncoder::new((&$postings.positions[start_tf as usize .. cum_tf as usize]).to_sequence());
                     let _ = enc.positions.write_sequence(positions).unwrap();
-                    start = cum;
+                    start_tf = cum_tf;
                 }
+
+                *last_tf += start_tf;
+                *postings_ptr += $postings.docs.len() as DocId;
             }
         }
 
