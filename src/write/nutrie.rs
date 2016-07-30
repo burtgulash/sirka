@@ -142,14 +142,14 @@ struct _TrieNode<'n> {
     t: WrittenTerm<'n>,
     is_word: bool,
     pointer_in_dictbuf: Option<usize>,
-    postings: Option<Postings>,
-    prefix_postings: Option<Postings>,
+    postings: Option<Postings<Vec<DocId>>>,
+    prefix_postings: Option<Postings<Vec<DocId>>>,
     parent: Option<TrieNodeWeak<'n>>,
     children: Vec<TrieNodeRef<'n>>,
 }
 
 impl<'n> TrieNode<'n> {
-    fn new(parent: Option<TrieNode<'n>>, t: WrittenTerm<'n>, is_word: bool, postings: Option<Postings>) -> TrieNode<'n> {
+    fn new(parent: Option<TrieNode<'n>>, t: WrittenTerm<'n>, is_word: bool, postings: Option<Postings<Vec<DocId>>>) -> TrieNode<'n> {
         //if let Some(ref p) = postings {
         //    println!("");
         //    println!("docs: {:?}", &p.docs);
@@ -250,13 +250,21 @@ impl<'n> TrieNode<'n> {
                 for p in &borrows {
                     // TODO this shouldn't be necessary
                     if let Some(ref postings) = p.postings {
-                        postings_to_merge.push(postings);
+                        postings_to_merge.push(Postings {
+                            docs: (&postings.docs).to_sequence(),
+                            tfs: (&postings.tfs).to_sequence(),
+                            positions: (&postings.positions).to_sequence(),
+                        });
                     }
                     if let Some(ref postings) = p.prefix_postings {
-                        postings_to_merge.push(postings);
+                        postings_to_merge.push(Postings {
+                            docs: (&postings.docs).to_sequence(),
+                            tfs: (&postings.tfs).to_sequence(),
+                            positions: (&postings.positions).to_sequence(),
+                        });
                     }
                 }
-                Postings::merge(&postings_to_merge[..])
+                Postings::merge_without_duplicates(&postings_to_merge[..])
             };
             self.borrow_mut().prefix_postings = Some(merged_postings);
         }

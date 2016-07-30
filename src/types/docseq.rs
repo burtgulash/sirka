@@ -34,8 +34,8 @@ pub trait SequenceEncoder {
     fn write_sequence<S: Sequence>(&mut self, seq: S) -> io::Result<usize>;
 }
 
-pub trait SequenceStorage {
-    type Sequence: Sequence;
+pub trait SequenceStorage<'a> {
+    type Sequence: Sequence + 'a;
     fn to_sequence(&self) -> Self::Sequence;
 }
 

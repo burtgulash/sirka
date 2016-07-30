@@ -1,7 +1,15 @@
 use std::{mem,slice,io};
 use types::{DocId,Sequence,SequenceStorage,SequenceEncoder};
 
-impl <'a> SequenceStorage for &'a Vec<DocId> {
+// impl<'a> SequenceStorage<'a> for Vec<DocId> {
+//     type Sequence = SliceSequence<'a>;
+// 
+//     fn to_sequence(&self) -> Self::Sequence {
+//         SliceSequence::new(&self)
+//     }
+// }
+
+impl<'a> SequenceStorage<'a> for &'a Vec<DocId> {
     type Sequence = SliceSequence<'a>;
 
     fn to_sequence(&self) -> Self::Sequence {
@@ -9,7 +17,7 @@ impl <'a> SequenceStorage for &'a Vec<DocId> {
     }
 }
 
-impl<'a> SequenceStorage for &'a [DocId] {
+impl<'a> SequenceStorage<'a> for &'a [DocId] {
     type Sequence = SliceSequence<'a>;
 
     fn to_sequence(&self) -> Self::Sequence {

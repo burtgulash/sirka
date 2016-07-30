@@ -53,7 +53,7 @@ macro_rules! tryopt {
 }
 
 impl<'a> PostingsStore for (&'a mut TermBuf, &'a mut TermBuf, &'a mut TermBuf) {
-    fn get_postings(&mut self, term_id: TermId) -> Option<Postings> {
+    fn get_postings(&mut self, term_id: TermId) -> Option<Postings<Vec<DocId>>> {
         Some(Postings {
             docs: tryopt!(self.0.get_termbuf(term_id)),
             tfs: tryopt!(self.1.get_termbuf(term_id)),
