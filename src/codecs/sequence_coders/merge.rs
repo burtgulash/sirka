@@ -11,13 +11,14 @@ struct MergeEncoder<S> {
 }
 
 impl<S: Sequence> MergeEncoder<S> {
-    fn new(sequences_to_merge: Vec<S>) -> Self {
+    fn new(sequences_to_merge: &[S]) -> Self {
         assert!(sequences_to_merge.len() > 0);
 
         let mut heap = BinaryHeap::new();
         let mut size = 0;
 
-        for mut sequence in sequences_to_merge.into_iter() {
+        for s in sequences_to_merge.iter() {
+            let mut sequence = s.clone();
             size += sequence.remains();
             if let Some(first_doc_id) = sequence.next() {
                 heap.push(FrontierPointer {
