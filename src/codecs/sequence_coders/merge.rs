@@ -1,12 +1,13 @@
 use types::*;
 use std::collections::BinaryHeap;
-use std::cmp::{min,Ordering};
+use std::cmp::Ordering;
 
 
 #[derive(Clone)]
 pub struct MergeEncoder<S> {
     frontier: BinaryHeap<FrontierPointer<S>>,
     size: usize,
+    position: usize,
 }
 
 impl<S: Sequence> MergeEncoder<S> {
@@ -31,6 +32,7 @@ impl<S: Sequence> MergeEncoder<S> {
         MergeEncoder {
             frontier: heap,
             size: size,
+            position: 0,
         }
     }
 }
@@ -38,7 +40,7 @@ impl<S: Sequence> MergeEncoder<S> {
 impl<S: Sequence> Sequence for MergeEncoder<S> {
     fn next(&mut self) -> Option<DocId> {
         // This can happen because subsequences do override this sequence's size
-        if self.size == 0 {
+        if self.position >= self.size {
             return None;
         }
         if let Some(mut ptr) = self.frontier.pop() {
@@ -47,7 +49,7 @@ impl<S: Sequence> Sequence for MergeEncoder<S> {
                 ptr.current = doc_id;
                 self.frontier.push(ptr);
             }
-            self.size -= 1;
+            self.position += 1;
             Some(current_doc)
         } else {
             None
@@ -55,7 +57,11 @@ impl<S: Sequence> Sequence for MergeEncoder<S> {
     }
 
     fn remains(&self) -> usize {
-        self.size
+        self.size - self.position
+    }
+
+    fn next_position(&self) -> usize {
+        self.position + 1
     }
 
     fn subsequence(&self, start: usize, len: usize) -> Self {
@@ -63,7 +69,9 @@ impl<S: Sequence> Sequence for MergeEncoder<S> {
         for _ in 0..start {
             sub.next();
         }
-        sub.size = min(sub.size, len);
+        let remaining_size = self.remains();
+        assert!(len <= remaining_size);
+        sub.size = len;
         sub
     }
 }

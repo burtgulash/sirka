@@ -28,8 +28,8 @@ impl<S: Sequence> Ascending<S> {
         }
     }
 
-    fn current_position(&self) -> Option<usize> {
-        Some(self.position)
+    fn next_position(&self) -> usize {
+        self.seq.next_position()
     }
 
     fn remains(&self) -> usize {
@@ -63,8 +63,8 @@ impl<S: Sequence> Sequence for AscendingEncoder<S> {
         (self.0)._next(true)
     }
 
-    fn current_position(&self) -> Option<usize> {
-        self.0.current_position()
+    fn next_position(&self) -> usize {
+        self.0.next_position()
     }
 
     fn remains(&self) -> usize {
@@ -81,8 +81,8 @@ impl<S: Sequence> Sequence for AscendingDecoder<S> {
         (self.0)._next(false)
     }
 
-    fn current_position(&self) -> Option<usize> {
-        self.0.current_position()
+    fn next_position(&self) -> usize {
+        self.0.next_position()
     }
 
     fn remains(&self) -> usize {

@@ -90,8 +90,8 @@ impl<'a> Sequence for SliceSequence<'a> {
         self.current()
     }
 
-    fn current_position(&self) -> Option<usize> {
-        Some(self.position)
+    fn next_position(&self) -> usize {
+        self.position + 1
     }
 }
 

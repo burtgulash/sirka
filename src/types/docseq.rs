@@ -3,10 +3,7 @@ use types::*;
 
 pub trait Sequence: Clone {
     fn remains(&self) -> usize;
-    fn current_position(&self) -> Option<usize> {
-        Some(0)
-    }
-
+    fn next_position(&self) -> usize;
     fn subsequence(&self, start: usize, len: usize) -> Self;
     fn next(&mut self) -> Option<DocId>;
 

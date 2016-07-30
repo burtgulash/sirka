@@ -32,8 +32,8 @@ impl<S: Sequence> Sequence for CumEncoder<S> {
         }
     }
 
-    fn current_position(&self) -> Option<usize> {
-        self.seq.current_position()
+    fn next_position(&self) -> usize {
+        self.seq.next_position()
     }
 
     fn remains(&self) -> usize {

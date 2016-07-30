@@ -45,6 +45,10 @@ impl<S: Sequence> Sequence for DeltaEncoder<S> {
         self.seq.remains() + 1
     }
 
+    fn next_position(&self) -> usize {
+        self.seq.next_position() - 1
+    }
+
     fn skip_n(&mut self, n: usize) -> Option<DocId> {
         if n == 0 {
             return self.to_return;
