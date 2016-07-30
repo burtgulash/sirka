@@ -1,7 +1,7 @@
-use self::delta::DeltaEncoder;
-use self::cum::CumEncoder;
-use self::ascending::{AscendingEncoder,AscendingDecoder};
-use self::merge::MergeEncoder;
+pub use self::delta::DeltaEncoder;
+pub use self::cum::CumEncoder;
+pub use self::ascending::{AscendingEncoder,AscendingDecoder};
+pub use self::merge::MergeEncoder;
 
 pub type DeltaDecoder<S> = CumEncoder<S>;
 pub type CumDecoder<S> = DeltaEncoder<S>;
