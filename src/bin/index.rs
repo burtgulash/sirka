@@ -56,6 +56,7 @@ fn process_docs(reader: BufReader<File>, term_serial: &mut TermId, doc_serial: &
             () => {
                 docbufs.add_doc(last_term_id, *doc_serial);
                 tfbufs.add_doc(last_term_id, tf);
+                assert!(tf > 0);
                 control_tf += tf;
             }
         }

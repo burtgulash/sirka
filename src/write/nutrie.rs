@@ -7,6 +7,7 @@ use std::ops::Deref;
 use write::postings::{Postings,PostingsStore};
 use types::{DocId,TermId,Term,TrieNodeHeader};
 use types::{SequenceEncoder,SequenceStorage};
+use codecs::{DeltaEncoder};
 use ::util::*;
 
 
@@ -148,6 +149,13 @@ struct _TrieNode<'n> {
 
 impl<'n> TrieNode<'n> {
     fn new(parent: Option<TrieNode<'n>>, t: WrittenTerm<'n>, is_word: bool, postings: Option<Postings>) -> TrieNode<'n> {
+        //if let Some(ref p) = postings {
+        //    println!("");
+        //    println!("docs: {:?}", &p.docs);
+        //    println!("tfs : {:?}", &p.tfs);
+        //    println!("pos : {:?}", &p.positions);
+        //    println!("---");
+        //}
         TrieNode(Rc::new(RefCell::new(_TrieNode {
             t: t,
             is_word: is_word,
@@ -222,7 +230,7 @@ impl<'n> TrieNode<'n> {
         }).collect()
     }
 
-    fn flush<W, DE, TE, PE>(&self, parent: &Self, dict_ptr: &mut usize, postings_ptr: &mut DocId, 
+    fn flush<W, DE, TE, PE>(&self, parent: &Self, dict_ptr: &mut usize, postings_ptr: &mut DocId,
                             dict_out: &mut W, enc: &mut PostingsEncoders<DE, TE, PE>)
         where W: Write,
               DE: SequenceEncoder,
@@ -275,12 +283,16 @@ impl<'n> TrieNode<'n> {
                 *postings_ptr += $postings.docs.len() as DocId;
 
                 // assert!(is_sorted_ascending(&postings.docs));
-                let _ = enc.docs.write_sequence((&$postings.docs[..]).to_sequence()).unwrap();
-                for &tf in &$postings.tfs {
-                    enc.tfs.write(tf).unwrap();
-                }
-                for &position in &$postings.positions {
-                    enc.positions.write(position).unwrap();
+                let _ = enc.docs.write_sequence((&$postings.docs).to_sequence()).unwrap();
+                //let _ = enc.tfs.write_sequence()
+
+                let mut start = 0;
+                let mut cum = 0;
+                for tf in $postings.tfs.iter().cloned() {
+                    cum += tf as usize;
+                    let positions = DeltaEncoder::new((&$postings.positions[start..cum]).to_sequence());
+                    let _ = enc.positions.write_sequence(positions).unwrap();
+                    start = cum;
                 }
             }
         }

@@ -55,10 +55,15 @@ fn keep_unique<T: Copy + PartialEq>(xs: &[T]) -> Vec<T> {
 
 impl Postings {
     pub fn merge(to_merge: &[&Postings]) -> Postings {
-        let mut its = to_merge.iter().map(|p| PostingsT {
-            docs: p.docs.iter().cloned(),
-            tfs: p.tfs.iter().cloned(),
-            positions: p.positions.iter().cloned(),
+        let mut its = to_merge.iter().map(|p| {
+            assert!(p.docs.len() == p.tfs.len());
+            assert!(p.docs.len() > 0);
+
+            PostingsT {
+                docs: p.docs.iter().cloned(),
+                tfs: p.tfs.iter().cloned(),
+                positions: p.positions.iter().cloned(),
+            }
         }).collect::<Vec<PostingsT<_>>>();
 
         let mut frontier = BinaryHeap::from_iter(its.iter_mut().enumerate().map(|(i, p)| {
@@ -79,6 +84,7 @@ impl Postings {
             () => {
                 tmp_pos.sort();
                 let unique_positions = keep_unique(&tmp_pos);
+
                 res_pos.extend_from_slice(&unique_positions);
                 tmp_pos.clear();
 
@@ -90,14 +96,17 @@ impl Postings {
         while let Some(mut ptr) = frontier.pop() {
             let doc_id = ptr.current_doc;
             let it_tf = its[ptr.i].tfs.next().unwrap();
+            assert!(it_tf > 0);
 
-            if doc_id == last_doc_id {
+            if last_doc_id == 0 || doc_id == last_doc_id {
                 for _ in 0..it_tf {
                     let pos = its[ptr.i].positions.next().unwrap();
                     tmp_pos.push(pos)
                 }
             } else {
-                // Do this for all docs except nil doc // TODO is this necessary?
+                assert!(doc_id > last_doc_id);
+
+                // TODO is this necessary?
                 if last_doc_id != 0 {
                     ADD_DOC!();
                 }

@@ -30,6 +30,7 @@ impl<S: Sequence> Sequence for DeltaEncoder<S> {
     fn next(&mut self) -> Option<DocId> {
         if let Some(next) = self.seq.next() {
             let to_return = self.to_return;
+            assert!(next >= self.last);
             self.to_return = Some(next - self.last);
             self.last = next;
             to_return
