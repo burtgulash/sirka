@@ -4,9 +4,8 @@ use std::rc::{Rc,Weak};
 use std::cell::{RefCell,Ref,RefMut};
 use std::ops::Deref;
 
-use write::postings::{Postings,PostingsStore};
 use types::{DocId,TermId,Term,TrieNodeHeader};
-use types::{Sequence,SequenceEncoder,SequenceStorage};
+use types::{Postings,PostingsStore,Sequence,SequenceEncoder,SequenceStorage};
 use codecs::{DeltaEncoder,CumEncoder};
 use util::*;
 

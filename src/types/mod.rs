@@ -1,10 +1,12 @@
 pub use self::meta::IndexMeta;
-pub use self::docseq::{Sequence,SequenceStorage,SequenceEncoder};
+pub use self::seq::{Sequence,SequenceStorage,SequenceEncoder};
 pub use self::nutrie::TrieNodeHeader;
+pub use self::postings::{PostingsStore,Postings};
 
 pub mod meta;
-pub mod docseq;
+pub mod seq;
 pub mod nutrie;
+pub mod postings;
 
 
 pub type TermId = u32;

@@ -1,20 +1,8 @@
 use std::cmp::Ordering;
 use std::iter::FromIterator;
 use std::collections::BinaryHeap;
-use types::{TermId,DocId};
-use types::{Sequence};
+use types::{TermId,DocId,Sequence,Postings};
 
-
-pub trait PostingsStore {
-    fn get_postings(&mut self, term_id: TermId) -> Option<Postings<Vec<DocId>>>;
-}
-
-#[derive(Clone)]
-pub struct Postings<T> {
-    pub docs: T,
-    pub tfs: T,
-    pub positions: T,
-}
 
 struct FrontierPointer<S> {
     current_doc: DocId,
