@@ -1,13 +1,13 @@
 use types::*;
 
 #[derive(Clone)]
-struct CumEncoder<S> {
+pub struct CumEncoder<S> {
     seq: S,
     cum: DocId,
 }
 
 impl<S: Sequence> CumEncoder<S> {
-    fn new(start_from: DocId, seq: S) -> Self {
+    pub fn new(start_from: DocId, seq: S) -> Self {
         CumEncoder {
             seq: seq,
             cum: start_from,

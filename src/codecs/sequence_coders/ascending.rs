@@ -7,7 +7,7 @@ struct Ascending<S> {
 }
 
 impl<S: Sequence> Ascending<S> {
-    fn new(start_position: usize, mut seq: S) -> Self {
+    fn new(start_position: usize, seq: S) -> Self {
         Ascending {
             seq: seq,
             position: start_position,
@@ -42,18 +42,18 @@ impl<S: Sequence> Ascending<S> {
 }
 
 #[derive(Clone)]
-struct AscendingEncoder<S>(Ascending<S>);
+pub struct AscendingEncoder<S>(Ascending<S>);
 #[derive(Clone)]
-struct AscendingDecoder<S>(Ascending<S>);
+pub struct AscendingDecoder<S>(Ascending<S>);
 
 impl<S: Sequence> AscendingEncoder<S> {
-    fn new(start_position: usize, seq: S) -> Self {
+    pub fn new(start_position: usize, seq: S) -> Self {
         AscendingEncoder(Ascending::new(start_position, seq))
     }
 }
 
 impl<S: Sequence> AscendingDecoder<S> {
-    fn new(start_position: usize, seq: S) -> Self {
+    pub fn new(start_position: usize, seq: S) -> Self {
         AscendingDecoder(Ascending::new(start_position, seq))
     }
 }

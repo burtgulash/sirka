@@ -1,13 +1,13 @@
 use types::*;
 
 #[derive(Clone)]
-struct DeltaEncoder<S> {
+pub struct DeltaEncoder<S> {
     seq: S,
     last: DocId,
 }
 
 impl<S: Sequence> DeltaEncoder<S> {
-    fn new(mut seq: S) -> Self {
+    pub fn new(mut seq: S) -> Self {
         assert!(seq.remains() > 0);
         let last = seq.next().unwrap();
         DeltaEncoder {

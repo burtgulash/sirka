@@ -1,17 +1,16 @@
 use types::*;
 use std::collections::BinaryHeap;
-use std::cmp::min;
-use std::cmp::{Ordering};
+use std::cmp::{min,Ordering};
 
 
 #[derive(Clone)]
-struct MergeEncoder<S> {
+pub struct MergeEncoder<S> {
     frontier: BinaryHeap<FrontierPointer<S>>,
     size: usize,
 }
 
 impl<S: Sequence> MergeEncoder<S> {
-    fn new(sequences_to_merge: &[S]) -> Self {
+    pub fn new(sequences_to_merge: &[S]) -> Self {
         assert!(sequences_to_merge.len() > 0);
 
         let mut heap = BinaryHeap::new();
