@@ -42,9 +42,14 @@ fn main() {
     let mut tfs_reader = create_reader(indexdir, "tfs");
     let mut tfsbuf = Vec::new();
     tfs_reader.read_to_end(&mut tfsbuf).unwrap();
-    let tfs = bytes_to_typed(&tfsbuf).to_sequence();
+    let tfs = DeltaDecoder::new(0, bytes_to_typed(&tfsbuf).to_sequence());
 
-    if let Some(result) = query(&dict, &docs, &tfs, query_to_seach) {
+    let mut pos_reader = create_reader(indexdir, "positions");
+    let mut posbuf = Vec::new();
+    pos_reader.read_to_end(&mut posbuf).unwrap();
+    let pos = bytes_to_typed(&posbuf).to_sequence();
+
+    if let Some(result) = query(&dict, docs, tfs, query_to_seach) {
         println!("Found in {} docs!", result.len());
     } else {
         println!("Not found!");
@@ -67,7 +72,7 @@ struct PostingSequences<DS: Sequence, TS: Sequence> {
 //    pos: S,
 }
 
-fn query<STRING, DS, TS>(dict: &StaticTrie, docs: &DS, tfs: &TS, q: &[STRING]) -> Option<Vec<DocId>> 
+fn query<STRING, DS, TS>(dict: &StaticTrie, docs: DS, tfs: TS, q: &[STRING]) -> Option<Vec<DocId>>
     where STRING: AsRef<str>,
           DS: Sequence,
           TS: Sequence
@@ -108,7 +113,7 @@ fn find_terms<'a>(dict: &'a StaticTrie, query: &[&str]) -> Option<Vec<&'a TrieNo
 }
 
 // search daat = search document at a time
-fn search_daat<DS, TS>(mut term_sequences: Vec<PostingSequences<DS, TS>>) -> Vec<DocId> 
+fn search_daat<DS, TS>(mut term_sequences: Vec<PostingSequences<DS, TS>>) -> Vec<DocId>
     where DS: Sequence,
           TS: Sequence
 {
