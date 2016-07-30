@@ -1,5 +1,6 @@
 use types::*;
 
+#[derive(Clone)]
 struct Ascending<S> {
     seq: S,
     position: usize,
@@ -40,7 +41,9 @@ impl<S: Sequence> Ascending<S> {
     }
 }
 
+#[derive(Clone)]
 struct AscendingEncoder<S>(Ascending<S>);
+#[derive(Clone)]
 struct AscendingDecoder<S>(Ascending<S>);
 
 impl<S: Sequence> AscendingEncoder<S> {

@@ -1,5 +1,6 @@
 use types::*;
 
+#[derive(Clone)]
 struct DeltaEncoder<S> {
     seq: S,
     last: DocId,

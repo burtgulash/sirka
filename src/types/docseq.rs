@@ -1,9 +1,12 @@
 use std::io;
 use types::*;
 
-pub trait Sequence {
+pub trait Sequence: Clone {
     fn remains(&self) -> usize;
-    fn current_position(&self) -> Option<usize>;
+    fn current_position(&self) -> Option<usize> {
+        Some(0)
+    }
+
     fn subsequence(&self, start: usize, len: usize) -> Self;
     fn next(&mut self) -> Option<DocId>;
 

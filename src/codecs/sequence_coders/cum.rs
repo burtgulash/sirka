@@ -1,5 +1,6 @@
 use types::*;
 
+#[derive(Clone)]
 struct CumEncoder<S> {
     seq: S,
     cum: DocId,
