@@ -66,6 +66,8 @@ macro_rules! tryopt {
 struct PostingSequences<DS: Sequence, TS: Sequence> {
     index: usize,
     current_doc: DocId,
+    doc_position: usize,
+    tfs_position: usize,
     term_id: TermId,
     docs: DS,
     tfs: TS,
@@ -84,8 +86,11 @@ fn query<STRING, DS, TS>(dict: &StaticTrie, docs: DS, tfs: TS, q: &[STRING]) -> 
     let mut term_sequences = term_headers.iter().enumerate().map(|(i, th)| {
         println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
         let mut d = docs.subsequence(th.postings_ptr as usize, th.num_postings as usize);
+        let docs_next_ptr = d.next_position();
         PostingSequences {
             index: i,
+            doc_position: docs_next_ptr,
+            tfs_position: docs_next_ptr - 1,
             current_doc: d.next().unwrap(),
             term_id: th.term_id,
             docs: d,
@@ -126,6 +131,7 @@ fn search_daat<DS, TS>(mut term_sequences: Vec<PostingSequences<DS, TS>>) -> Vec
             let mut current_seq = &mut term_sequences[i];
             if current_seq.current_doc < current_doc_id {
                 if let Some(doc_id) = current_seq.docs.skip_to(current_doc_id) {
+                    current_seq.doc_position = current_seq.docs.next_position() - 1;
                     current_seq.current_doc = doc_id;
                 } else {
                     break 'merge;
@@ -146,12 +152,19 @@ fn search_daat<DS, TS>(mut term_sequences: Vec<PostingSequences<DS, TS>>) -> Vec
         // Sliders are now aligned on 'doc_id'.
         // This means a match, so output one result
         result.push(current_doc_id);
+        for seq in term_sequences.iter_mut() {
+            seq.tfs.skip_n(seq.doc_position - seq.tfs_position);
+            seq.tfs_position = seq.doc_position;
+            assert_eq!(seq.tfs.remains(), seq.docs.remains());
+        }
 
         // Advance all sliders to next doc and record
         // the maximum doc_id for each slider
         let mut max_doc_id = current_doc_id;
         for sequence in term_sequences.iter_mut() {
             if let Some(next_doc_id) = sequence.docs.next() {
+                sequence.doc_position += 1;
+                assert_eq!(sequence.docs.next_position() - 1, sequence.doc_position);
                 sequence.current_doc = next_doc_id;
                 if next_doc_id > max_doc_id {
                     max_doc_id = next_doc_id;
