@@ -15,9 +15,9 @@ pub struct PostingsT<T> {
 }
 pub type Postings = PostingsT<Vec<DocId>>;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct IteratorPointer {
-    it_i: usize,
+    i: usize,
     current_doc: DocId,
 }
 
@@ -29,15 +29,11 @@ impl Ord for IteratorPointer {
 }
 
 impl PartialOrd for IteratorPointer {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
 impl PartialEq for IteratorPointer {
-    fn eq(&self, other: &Self) -> bool {
-        self.current_doc == other.current_doc
-    }
+    fn eq(&self, other: &Self) -> bool { self.current_doc == other.current_doc }
 }
 
 impl Eq for IteratorPointer {}
@@ -65,8 +61,11 @@ impl Postings {
             positions: p.positions.iter().cloned(),
         }).collect::<Vec<PostingsT<_>>>();
 
-        let mut h = BinaryHeap::from_iter(its.iter_mut().enumerate().map(|(i, p)| {
-            IteratorPointer{it_i: i, current_doc: p.docs.next().unwrap()}
+        let mut frontier = BinaryHeap::from_iter(its.iter_mut().enumerate().map(|(i, p)| {
+            IteratorPointer{
+                i: i,
+                current_doc: p.docs.next().unwrap()
+            }
         }));
 
         let mut res_docs = Vec::<DocId>::new();
@@ -88,13 +87,13 @@ impl Postings {
             }
         }
 
-        while let Some(itptr) = h.pop() {
-            let doc_id = itptr.current_doc;
-            let it_tf = its[itptr.it_i].tfs.next().unwrap();
+        while let Some(mut ptr) = frontier.pop() {
+            let doc_id = ptr.current_doc;
+            let it_tf = its[ptr.i].tfs.next().unwrap();
 
             if doc_id == last_doc_id {
                 for _ in 0..it_tf {
-                    let pos = its[itptr.it_i].positions.next().unwrap();
+                    let pos = its[ptr.i].positions.next().unwrap();
                     tmp_pos.push(pos)
                 }
             } else {
@@ -106,11 +105,9 @@ impl Postings {
             }
 
             // Insert next doc_id into heap if it exists
-            if let Some(next_doc_id) = its[itptr.it_i].docs.next() {
-                h.push(IteratorPointer {
-                    it_i: itptr.it_i,
-                    current_doc: next_doc_id,
-                });
+            if let Some(next_doc_id) = its[ptr.i].docs.next() {
+                ptr.current_doc = next_doc_id;
+                frontier.push(ptr);
             }
         }
         ADD_DOC!();
