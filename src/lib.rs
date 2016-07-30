@@ -1,12 +1,13 @@
-pub mod write;
-pub mod read;
+pub use self::util::*;
+pub use self::types::*;
+pub use self::termbuf::*;
+pub use self::postings::*;
+pub use self::nutrie::*;
+pub use self::meta::*;
+
+pub mod nutrie;
+pub mod postings;
+pub mod termbuf;
 pub mod types;
 pub mod util;
-pub mod codecs;
-
-pub use read::{StaticTrie};
-//pub use codecs::{SliceSequence,PlainEncoder};
-pub use codecs::*;
-pub use write::{TermBuf,PostingsEncoders,create_trie};
-pub use types::*;
-pub use util::bytes_to_typed;
+pub mod meta;

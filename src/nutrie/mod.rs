@@ -1,3 +1,8 @@
+pub mod read;
+pub mod write;
+
+pub use self::write::*;
+pub use self::read::*;
 use types::{DocId,TermId};
 
 // TODO packed necessary?

@@ -1,4 +1,5 @@
 use types::*;
+use postings::Sequence;
 
 #[derive(Clone)]
 pub struct CumEncoder<S> {

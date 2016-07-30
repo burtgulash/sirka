@@ -1,5 +1,6 @@
 use std::mem;
-use types::{DocId,TermId,Postings,PostingsStore};
+use types::*;
+use postings::{Postings,PostingsStore};
 
 pub struct TermBuf {
     pub buffers: Vec<Option<Vec<DocId>>>,

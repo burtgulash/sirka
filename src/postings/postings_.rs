@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
-use std::iter::FromIterator;
+use std::iter::FromIterator; // TODO?
 use std::collections::BinaryHeap;
-use types::{TermId,DocId,Sequence,Postings};
+use postings::{Postings,Sequence};
+use types::*;
 
 
 struct FrontierPointer<S> {

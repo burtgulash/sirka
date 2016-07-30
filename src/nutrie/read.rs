@@ -1,6 +1,6 @@
 use std::{mem,slice,str};
 use std::io::Read;
-use types::TrieNodeHeader;
+use nutrie::TrieNodeHeader;
 use util::*;
 
 impl TrieNodeHeader {

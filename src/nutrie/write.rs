@@ -4,10 +4,11 @@ use std::rc::{Rc,Weak};
 use std::cell::{RefCell,Ref,RefMut};
 use std::ops::Deref;
 
-use types::{DocId,TermId,Term,TrieNodeHeader};
-use types::{Postings,PostingsStore,Sequence,SequenceEncoder,SequenceStorage};
-use codecs::{DeltaEncoder,CumEncoder};
+use types::*;
 use util::*;
+use nutrie::TrieNodeHeader;
+use postings::encoding::{DeltaEncoder,CumEncoder};
+use postings::{Postings,PostingsStore,Sequence,SequenceStorage,SequenceEncoder};
 
 
 #[derive(Clone)]

@@ -1,5 +1,6 @@
 use std::{mem,slice,io};
-use types::{DocId,Sequence,SequenceStorage,SequenceEncoder};
+use types::*;
+use postings::{Sequence,SequenceStorage,SequenceEncoder};
 
 // impl<'a> SequenceStorage<'a> for Vec<DocId> {
 //     type Sequence = SliceSequence<'a>;
