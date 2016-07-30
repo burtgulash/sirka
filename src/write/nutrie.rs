@@ -240,7 +240,8 @@ impl<'n> TrieNode<'n> {
 
                 // Need to store actual borrows first
                 let borrows = selfb.children.iter().map(|p| { p.borrow() }).collect::<Vec<_>>();
-                let postings_to_merge = borrows.iter().map(|p| { p.postings.as_ref().unwrap() }).collect::<Vec<_>>();
+                let mut postings_to_merge = borrows.iter().map(|p| { p.postings.as_ref().unwrap() }).collect::<Vec<_>>();
+                postings_to_merge.push(selfb.postings.as_ref().unwrap());
                 Postings::merge(&postings_to_merge[..])
             };
             self.borrow_mut().postings = Some(merged_postings);
@@ -304,14 +305,15 @@ impl TrieNodeHeader {
     }
 
     fn from_trienode<'n>(n: TrieNode<'n>, prefix: &str, postings_ptr: DocId) -> TrieNodeHeader {
+        let term = &n.term()[prefix.len()..];
         // TODO Handle longer strings by truncating
-        assert!(n.term().len() < u16::max_value() as usize);
+        assert!(term.len() < u16::max_value() as usize);
 
         TrieNodeHeader {
             postings_ptr: postings_ptr,
             term_ptr: (n.term_ptr() + prefix.len()) as u32,
             term_id: n.borrow().t.term_id,
-            term_length: n.term().len() as u16,
+            term_length: term.len() as u16,
             num_postings: n.postings_len() as u64,
             num_children: n.borrow().children.len() as u32,
             is_word: n.borrow().is_word,
