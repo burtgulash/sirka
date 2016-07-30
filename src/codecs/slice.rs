@@ -40,20 +40,20 @@ impl<W: io::Write> SequenceEncoder for PlainEncoder<W> {
 #[derive(Clone)]
 pub struct SliceSequence<'a> {
     seq: &'a [DocId],
-    next_position: usize,
+    position: usize,
 }
 
 impl<'a> SliceSequence<'a> {
     pub fn new(seq: &'a [DocId]) -> Self {
         SliceSequence {
             seq: seq,
-            next_position: 0,
+            position: 0,
         }
     }
 
     fn current(&self) -> Option<DocId> {
-        if 0 < self.next_position && self.next_position <= self.seq.len() {
-            Some(self.seq[self.next_position - 1])
+        if self.position < self.seq.len() {
+            Some(self.seq[self.position])
         } else {
             None
         }
@@ -68,33 +68,22 @@ impl<'a> Sequence for SliceSequence<'a> {
     }
 
     fn next(&mut self) -> Option<DocId> {
-        self.skip_n(1)
+        let cur = self.current();
+        self.position += 1;
+        cur
     }
 
     fn remains(&self) -> usize {
-        self.seq.len() - self.next_position
-    }
-
-    fn skip_to(&mut self, doc_id: DocId) -> Option<DocId> {
-        while self.next_position <= self.seq.len()
-           && self.seq[self.next_position - 1] < doc_id
-        {
-            self.next_position += 1;
-        }
-        self.current()
+        self.seq.len() - self.position
     }
 
     fn skip_n(&mut self, n: usize) -> Option<DocId> {
-        self.next_position += n;
+        self.position += n;
         self.current()
     }
 
     fn current_position(&self) -> Option<usize> {
-        if self.next_position > 0 {
-            Some(self.next_position - 1)
-        } else {
-            None
-        }
+        Some(self.position)
     }
 }
 
@@ -110,5 +99,28 @@ mod tests {
             println!("Next doc: {}", doc);
         }
         println!("CUUU");
+    }
+
+    #[test]
+    fn test_slice_sequence_skip() {
+        let docs = vec![5,7,9,11,15,17,50,90];
+        let mut seq = (&docs[..]).to_sequence();
+        assert_eq!(seq.next().unwrap(), 5);
+        assert_eq!(seq.skip_to(9).unwrap(), 9);
+        assert_eq!(seq.skip_to(12).unwrap(), 15);
+        assert_eq!(seq.skip_to(17).unwrap(), 17);
+        assert_eq!(seq.skip_to(30).unwrap(), 50);
+        assert_eq!(seq.skip_to(60).unwrap(), 90);
+    }
+
+    #[test]
+    fn test_slice_subsequence_skip() {
+        let docs = vec![5,7,9,11,15,17,50,90, 120, 2000, 2001];
+        let mut seq = (&docs[..]).to_sequence();
+        let mut subseq = seq.subsequence(3, 5);
+        assert_eq!(seq.skip_to(11).unwrap(), 11);
+        assert_eq!(seq.skip_to(17).unwrap(), 17);
+        assert_eq!(seq.skip_to(30).unwrap(), 50);
+        assert_eq!(seq.skip_to(60).unwrap(), 90);
     }
 }

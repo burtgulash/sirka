@@ -60,6 +60,7 @@ macro_rules! tryopt {
 
 struct PostingSequences<DS: Sequence, TS: Sequence> {
     index: usize,
+    current_doc: DocId,
     term_id: TermId,
     docs: DS,
     tfs: TS,
@@ -77,10 +78,12 @@ fn query<STRING, DS, TS>(dict: &StaticTrie, docs: &DS, tfs: &TS, q: &[STRING]) -
 
     let mut term_sequences = term_headers.iter().enumerate().map(|(i, th)| {
         println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
+        let mut d = docs.subsequence(th.postings_ptr as usize, th.num_postings as usize);
         PostingSequences {
             index: i,
+            current_doc: d.next().unwrap(),
             term_id: th.term_id,
-            docs: docs.subsequence(th.postings_ptr as usize, th.num_postings as usize),
+            docs: d,
             tfs: tfs.subsequence(th.postings_ptr as usize, th.num_postings as usize),
         }
     }).collect::<Vec<_>>();
@@ -111,20 +114,24 @@ fn search_daat<DS, TS>(mut term_sequences: Vec<PostingSequences<DS, TS>>) -> Vec
 {
     let mut result = Vec::new();
 
-    let mut current_doc_id = 0;
+    let mut current_doc_id = term_sequences[0].current_doc;
     'merge: loop {
         let mut i = 0;
         while i < term_sequences.len() {
             let mut current_seq = &mut term_sequences[i];
-            if let Some(doc_id) = current_seq.docs.skip_to(current_doc_id) {
-                if doc_id > current_doc_id {
-                    // Aligning failed. Start from first term
-                    i = 0;
-                    current_doc_id = doc_id;
-                    continue;
+            if current_seq.current_doc < current_doc_id {
+                if let Some(doc_id) = current_seq.docs.skip_to(current_doc_id) {
+                    current_seq.current_doc = doc_id;
+                } else {
+                    break 'merge;
                 }
-            } else {
-                break 'merge;
+            }
+
+            if current_seq.current_doc > current_doc_id {
+                // Aligning failed. Start from first term
+                current_doc_id = current_seq.current_doc;
+                i = 0;
+                continue;
             }
 
             // Try to align next query term
@@ -140,6 +147,7 @@ fn search_daat<DS, TS>(mut term_sequences: Vec<PostingSequences<DS, TS>>) -> Vec
         let mut max_doc_id = current_doc_id;
         for sequence in term_sequences.iter_mut() {
             if let Some(next_doc_id) = sequence.docs.next() {
+                sequence.current_doc = next_doc_id;
                 if next_doc_id > max_doc_id {
                     max_doc_id = next_doc_id;
                 }
