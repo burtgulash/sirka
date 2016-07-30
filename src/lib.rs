@@ -5,9 +5,10 @@ pub use self::postings::*;
 pub use self::nutrie::*;
 pub use self::meta::*;
 
+#[macro_use]
+pub mod util;
 pub mod nutrie;
 pub mod postings;
 pub mod termbuf;
 pub mod types;
-pub mod util;
 pub mod meta;

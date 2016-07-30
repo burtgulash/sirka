@@ -1,5 +1,13 @@
 use std::{slice,mem};
 
+#[macro_export]
+macro_rules! tryopt {
+    ($e:expr) => (match $e {
+        Some(value) => value,
+        None => return None,
+    })
+}
+
 pub fn common_prefix_len(a: &str, b: &str) -> usize {
     a.chars().zip(b.chars())
         .take_while(|&(ac, bc)| { ac == bc })

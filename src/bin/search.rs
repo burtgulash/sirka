@@ -1,3 +1,4 @@
+#[macro_use]
 extern crate sirka;
 
 use std::path::Path;
@@ -54,13 +55,6 @@ fn main() {
     } else {
         println!("Not found!");
     }
-}
-
-macro_rules! tryopt {
-    ($e:expr) => (match $e {
-        Some(value) => value,
-        None => return None,
-    })
 }
 
 struct PostingSequences<DS: Sequence, TS: Sequence> {

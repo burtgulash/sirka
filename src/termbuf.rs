@@ -45,13 +45,6 @@ impl TermBuf {
     }
 }
 
-macro_rules! tryopt {
-    ($e:expr) => (match $e {
-        Some(value) => value,
-        None => return None,
-    })
-}
-
 impl<'a> PostingsStore for (&'a mut TermBuf, &'a mut TermBuf, &'a mut TermBuf) {
     fn get_postings(&mut self, term_id: TermId) -> Option<Postings<Vec<DocId>>> {
         Some(Postings {

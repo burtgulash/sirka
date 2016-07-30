@@ -20,13 +20,6 @@ impl<S: Sequence> DeltaEncoder<S> {
     }
 }
 
-macro_rules! tryopt {
-    ($e:expr) => (match $e {
-        Some(value) => value,
-        None => return None,
-    })
-}
-
 impl<S: Sequence> Sequence for DeltaEncoder<S> {
     fn next(&mut self) -> Option<DocId> {
         if let Some(next) = self.seq.next() {
