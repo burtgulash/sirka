@@ -1,10 +1,12 @@
 use types::*;
 use postings::{Postings,Sequence};
 
-pub trait PostingsCursor<DS, TS, PS> {
+pub trait PostingsCursor<'a, DS, TS, PS> {
+    type Postings: Sequence + 'a;
+
     fn advance(&mut self) -> Option<DocId>;
     fn advance_to(&mut self, doc_id: DocId) -> Option<DocId>;
-    fn catch_up<S: Sequence>(&mut self) -> (DocId, DocId, S);
+    fn catch_up(&'a mut self) -> (DocId, DocId, Self::Postings);
     fn current(&self) -> DocId;
     fn remains(&self) -> usize;
 }
@@ -40,7 +42,9 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> SimpleCursor<DS, TS, PS> {
     }
 }
 
-impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for SimpleCursor<DS, TS, PS> {
+impl<'a, DS: Sequence, TS: Sequence, PS: Sequence + 'a> PostingsCursor<'a, DS, TS, PS> for SimpleCursor<DS, TS, PS> {
+    type Postings = PS;
+
     fn remains(&self) -> usize {
         self.postings.docs.remains()
     }
@@ -75,7 +79,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
         Some(self.current)
     }
 
-    fn catch_up<S: Sequence>(&mut self) -> (DocId, DocId, S) {
+    fn catch_up(&'a mut self) -> (DocId, DocId, Self::Postings) {
         // Align tfs to docs
         let tf = self.postings.tfs.skip_n(self.ptr.docs - self.ptr.tfs).unwrap();
         self.ptr.tfs = self.ptr.docs;

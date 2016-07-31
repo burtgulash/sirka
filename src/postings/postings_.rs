@@ -1,7 +1,9 @@
+use std::marker::PhantomData;
 use std::cmp::Ordering;
 use std::iter::FromIterator; // needed for ::from_iter
 use std::collections::BinaryHeap;
-use postings::{Postings,VecPostings,Sequence,PostingsCursor,SimpleCursor};
+use postings::{Postings,VecPostings,Sequence,SequenceStorage,PostingsCursor,SimpleCursor,CumEncoder};
+use postings::slice::SliceSequence;
 use types::*;
 
 impl<A: Sequence, B: Sequence, C: Sequence> Ord for SimpleCursor<A, B, C> {
@@ -66,59 +68,74 @@ fn create_heap<A: Sequence, B: Sequence, C: Sequence>(to_merge: &[Postings<A, B,
 struct MergerWithoutDuplicates<A, B, C> {
     frontier: BinaryHeap<SimpleCursor<A, B, C>>,
     current_cursor: Option<SimpleCursor<A, B, C>>,
+    current_doc: Option<DocId>,
     current_positions: Option<Vec<DocId>>,
     current_tf: Option<DocId>,
     size: usize,
+    processed: usize,
+    //phantom: PhantomData<&'a SliceSequence<'a>>,
 }
 
 impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
     pub fn new(to_merge: &[Postings<A, B, C>]) -> Self {
-        let size = to_merge.iter().map(|p| p.docs.remains()).fold(0, |acc, &x| acc + x);
+        let size = to_merge.iter().map(|p| p.docs.remains()).fold(0, |acc, x| acc + x);
         println!("merged SIZE: {}", size);
 
         let mut heap = create_heap(to_merge);
+        let first_cursor = heap.pop();
+
         MergerWithoutDuplicates {
             frontier: heap,
-            current_cursor: heap.pop(),
+            current_cursor: first_cursor,
+            current_doc: None,
             current_positions: None,
             current_tf: None,
             size: size,
+            processed: 1,
         }
     }
 }
 
-impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWithoutDuplicates<A, B, C> {
-    fn advance<S: Sequence>(&mut self) -> Option<DocId> {
-        if let Some(mut current_cursor) = self.current_cursor {
-            let current_doc = current_cursor.current();
-            let positions_buffer = Vec::new();
+impl<'a, A: Sequence, B: Sequence, C: Sequence> PostingsCursor<'a, A, B, C> for MergerWithoutDuplicates<A, B, C> {
+    type Postings = SliceSequence<'a>;
 
-            loop {
-                let (tf, mut positions) = current_cursor.catch_up();
-                while let Some(position) = positions.next() {
-                    positions_buffer.push(position);
-                }
+    fn advance(&mut self) -> Option<DocId> {
+        if self.current_cursor.is_none() {
+            return None;
+        }
 
-                if let Some(mut next_cursor) = current_cursor.advance() {
-                    let next_doc = next_cursor.current();
-                    self.current_cursor = Some(next_cursor);
+        let mut current_cursor = self.current_cursor.take().unwrap();
+        let current_doc = current_cursor.current();
+        let mut positions_buffer = Vec::new();
 
-                    if next_doc != current_doc {
-                        break;
-                    }
-                } else {
-                    self.current_cursor = None;
-                }
+        loop {
+            let (doc, tf, mut positions) = current_cursor.catch_up();
+            while let Some(position) = positions.next() {
+                positions_buffer.push(position);
             }
 
-            positions_buffer.sort();
-            self.current_positions = Some(keep_unique(&positions_buffer));
-            self.current_tf = Some(self.current_positions.len() as DocId);
+            if let Some(mut next_cursor) = self.frontier.pop() {
+                self.processed += 1;
+                let next_doc = next_cursor.current();
+                next_cursor.advance();
 
-            Some(current_doc)
-        } else {
-            None
+                if next_doc == current_doc {
+                    self.frontier.push(next_cursor);
+                } else {
+                    self.current_cursor = Some(next_cursor);
+                    break;
+                }
+            } else {
+                self.current_cursor = None;
+            }
         }
+
+        positions_buffer.sort();
+        let unique_positions = keep_unique(&positions_buffer);
+        self.current_tf = Some(unique_positions.len() as DocId);
+        self.current_positions = Some(unique_positions);
+        self.current_doc = Some(current_doc);
+        self.current_doc
     }
 
     // TODO use this as default impl for trait
@@ -136,69 +153,48 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
         None
     }
 
-    fn catch_up<S: Sequence>(&mut self) -> (DocId, DocId, S) {
+    fn catch_up(&'a mut self) -> (DocId, DocId, Self::Postings) {
         assert!(self.current_cursor.is_some());
-        (self.current_cursor.current(), self.current_tf.unwrap(), self.current_positions.as_ref().unwrap().to_sequence())
+        let positions = self.current_positions.as_ref().unwrap().to_sequence();
+        (self.current_doc.unwrap(), self.current_tf.unwrap(), positions)
     }
 
     fn current(&self) -> DocId {
         assert!(self.current_cursor.is_some());
-        self.current_cursor.current();
+        self.current_doc.unwrap()
     }
 
-    fn remains(&self) -> DocId {
-        assert!(self.current_cursor.is_some());
-        self.current_cursor.current();
+    fn remains(&self) -> usize {
+        self.size - self.processed
     }
 }
 
 impl<S: Sequence> Postings<S, S, S> {
     pub fn merge_without_duplicates(to_merge: &[Self]) -> VecPostings {
-        let mut merger = Merger::new(to_merge);
-        let mut last_doc_id = 0;
-        let mut tmp_pos: Vec<DocId> = Vec::new();
-        let mut res = Postings {
+        let cum_encoded: Vec<_> = to_merge.iter().map(|p| {
+            Postings {
+                // TODO clones necessary?
+                docs: p.docs.clone(),
+                tfs: p.tfs.clone(),
+                positions: CumEncoder::new(0, p.positions.clone()),
+            }
+        }).collect();
+
+        let mut res = VecPostings {
             docs: Vec::new(),
             tfs: Vec::new(),
             positions: Vec::new(),
         };
 
-        macro_rules! ADD_DOC {
-            () => {
-                tmp_pos.sort();
-                let unique_positions = keep_unique(&tmp_pos);
-
-                res.positions.extend_from_slice(&unique_positions);
-                tmp_pos.clear();
-
-                res.docs.push(last_doc_id);
-                res.tfs.push(unique_positions.len() as DocId);
+        let mut merger = MergerWithoutDuplicates::new(&cum_encoded);
+        while let Some(_) = merger.advance() {
+            let (doc, tf, mut positions) = merger.catch_up();
+            res.docs.push(doc);
+            res.tfs.push(tf);
+            while let Some(position) = positions.next() {
+                res.positions.push(position);
             }
         }
-
-        while let Some(mut cur) = merger.next() {
-            let doc_id = cur.current();
-
-            if last_doc_id == 0 || doc_id == last_doc_id {
-                let mut positions = cur.current_positions();
-                while let Some(position) = positions.next() {
-                    tmp_pos.push(position);
-                }
-            } else {
-                assert!(doc_id > last_doc_id);
-
-                // TODO is this necessary?
-                if last_doc_id != 0 {
-                    ADD_DOC!();
-                }
-                last_doc_id = doc_id;
-            }
-
-            if let Some(next_doc_id) = cur.advance() {
-                merger.put(cur);
-            }
-        }
-        ADD_DOC!();
 
         res
     }
