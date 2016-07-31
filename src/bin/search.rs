@@ -59,9 +59,9 @@ fn main() {
 }
 
 trait PostingsCursor<DS, TS, PS> {
-    fn try_doc(&mut self, doc_id: DocId) -> Option<DocId>;
-    fn confirm_doc(&mut self) -> DocId;
     fn advance(&mut self) -> Option<DocId>;
+    fn advance_to(&mut self, doc_id: DocId) -> Option<DocId>;
+    fn current_positions(&mut self) -> PS;
     fn current(&self) -> DocId;
     fn remains(&self) -> usize;
 }
@@ -75,7 +75,19 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
         self.current
     }
 
-    fn try_doc(&mut self, align_to: DocId) -> Option<DocId> {
+    fn advance(&mut self) -> Option<DocId> {
+        if let Some(next_doc_id) = self.postings.docs.next() {
+            self.ptr.docs += 1;
+            self.current = next_doc_id;
+
+            assert_eq!(self.postings.docs.next_position() - 1, self.ptr.docs);
+            Some(next_doc_id)
+        } else {
+            None
+        }
+    }
+
+    fn advance_to(&mut self, align_to: DocId) -> Option<DocId> {
         if self.current < align_to {
             if let (Some(doc_id), n_skipped) = self.postings.docs.skip_to(align_to) {
                 self.ptr.docs += n_skipped;
@@ -89,7 +101,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
         Some(self.current)
     }
 
-    fn confirm_doc(&mut self) -> DocId {
+    fn current_positions(&mut self) -> PS {
         // Align tfs to docs
         let tf = self.postings.tfs.skip_n(self.ptr.docs - self.ptr.tfs).unwrap();
         self.ptr.tfs = self.ptr.docs;
@@ -108,22 +120,9 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
 
         // TODO assign new subsequence to self.postings.positions to avoid skipping over the same
         // elements in next round
-        let positions = DeltaDecoder::new(0, self.postings.positions.subsequence(tf as usize, (next_tf - tf) as usize)).collect();
-        println!("found in doc: {}, positions: {:?}", self.current, positions);
+        let positions = self.postings.positions.subsequence(tf as usize, (next_tf - tf) as usize);
 
-        self.current()
-    }
-
-    fn advance(&mut self) -> Option<DocId> {
-        if let Some(next_doc_id) = self.postings.docs.next() {
-            self.ptr.docs += 1;
-            self.current = next_doc_id;
-
-            assert_eq!(self.postings.docs.next_position() - 1, self.ptr.docs);
-            Some(next_doc_id)
-        } else {
-            None
-        }
+        positions
     }
 }
 
@@ -249,7 +248,7 @@ fn search_daat<DS, TS, PS, C>(mut term_cursors: Vec<C>) -> Vec<DocId>
     'intersect: loop {
         'align: loop {
             for cur in &mut term_cursors {
-                if let Some(doc_id) = cur.try_doc(current_doc_id) {
+                if let Some(doc_id) = cur.advance_to(current_doc_id) {
                     if doc_id > current_doc_id {
                         current_doc_id = doc_id;
                         continue 'align;
@@ -262,9 +261,11 @@ fn search_daat<DS, TS, PS, C>(mut term_cursors: Vec<C>) -> Vec<DocId>
         }
 
         for cur in term_cursors.iter_mut() {
-            // TODO this will output matched doc + evidence
-            let matched_doc = cur.confirm_doc();
-            result.push(matched_doc);
+            println!("found in doc: {}", cur.current());
+            result.push(cur.current());
+
+            // TODO delta decode these positions
+            let positions = cur.current_positions();
 
             if let Some(doc_id) = cur.advance() {
                 // Start next iteration alignment with maximum doc id
