@@ -24,11 +24,10 @@ fn process_docs(reader: BufReader<File>, term_serial: &mut TermId, doc_serial: &
     let mut posbufs = TermBuf::new();
 
     for line in reader.lines() {
-        let l = line.unwrap();
-        *doc_serial += 1;
+        let line = line.unwrap();
 
         let mut forward_index = Vec::<(TermId, DocId)>::new();
-        for (position, s) in l.split(separator).enumerate() {
+        for (position, s) in line.split(separator).enumerate() {
             if s.len() > 0 {
                 let term_id = *h.entry(s.into()).or_insert_with(|| {
                     *term_serial += 1;
@@ -38,6 +37,12 @@ fn process_docs(reader: BufReader<File>, term_serial: &mut TermId, doc_serial: &
             }
         }
 
+        // Skip empty lines
+        if forward_index.len() == 0 {
+            continue;
+        }
+
+        *doc_serial += 1;
         forward_index.sort_by(|a, b| {
             let c = a.0.cmp(&b.0);
             if c == Ordering::Equal {
@@ -46,11 +51,13 @@ fn process_docs(reader: BufReader<File>, term_serial: &mut TermId, doc_serial: &
             c
         });
 
+        // Checksum for tfs. All positions must sum to this
+        let mut control_tf = 0;
+        // forward_index will be moved to loop
+        let len = forward_index.len();
+
         let mut last_term_id = 0;
         let mut tf = 0;
-
-        let mut control_tf = 0;
-        let len = forward_index.len();
 
         macro_rules! ADD_DOC {
             () => {
@@ -119,27 +126,4 @@ fn main() {
     };
 
     create_writer(&dirname, "meta").write(&meta.to_bytes()).unwrap();
-
-    //println!("Creating BK Tree");
-    //let mut bk = BKTree::new();
-    //for term in terms.iter() {
-    //    bk.insert_term(term);
-    //}
-
-    //println!("Inserting prefixes into BK Tree");
-    //for term in &tr.new_terms {
-    //    bk.insert_term(term);
-    //    // println!("Prefix: {}", term.term);
-    //}
-    //bk.print();
-
-
-
-    // println!("{}", get_common_prefix_len("autobus", "autoba"));
-
-    //for t in terms {
-    //    println!("{}", t.term);
-    //}
-
-    //println!("{:?}", terms);
 }

@@ -1,5 +1,6 @@
 use std::{mem,slice,io};
 use types::*;
+use util::typed_to_bytes;
 use postings::{Sequence,SequenceStorage,SequenceEncoder};
 
 // impl<'a> SequenceStorage<'a> for Vec<DocId> {
@@ -45,11 +46,8 @@ impl<W: io::Write> SequenceEncoder for PlainEncoder<W> {
     }
 
     fn write_sequence<S: Sequence>(&mut self, mut seq: S) -> io::Result<usize> {
-        let mut total_size = 0;
-        while let Some(doc_id) = seq.next() {
-            total_size += try!(self.write(doc_id));
-        }
-        Ok(total_size)
+        let xs = seq.collect();
+        self.writer.write(typed_to_bytes(&xs))
     }
 }
 
