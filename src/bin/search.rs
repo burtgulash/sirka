@@ -58,14 +58,103 @@ fn main() {
     }
 }
 
-struct PostingSequences<DS: Sequence, TS: Sequence, PS: Sequence> {
-    index: usize,
-    doc_position: usize,
-    tfs_position: usize,
-    current_doc: DocId,
-    current_tf: DocId,
-    term_id: TermId,
+trait PostingsCursor<DS, TS, PS> {
+    fn try_doc(&mut self, doc_id: DocId) -> Option<DocId>;
+    fn confirm_doc(&mut self) -> DocId;
+    fn advance(&mut self) -> Option<DocId>;
+    fn current(&self) -> DocId;
+    fn remains(&self) -> usize;
+}
+
+impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for SimpleCursor<DS, TS, PS> {
+    fn remains(&self) -> usize {
+        self.postings.docs.remains()
+    }
+
+    fn current(&self) -> DocId {
+        self.current
+    }
+
+    fn try_doc(&mut self, align_to: DocId) -> Option<DocId> {
+        if self.current < align_to {
+            if let (Some(doc_id), n_skipped) = self.postings.docs.skip_to(align_to) {
+                self.ptr.docs += n_skipped;
+                self.current = doc_id;
+            } else {
+                return None;
+            }
+        }
+
+        assert!(self.current >= align_to);
+        Some(self.current)
+    }
+
+    fn confirm_doc(&mut self) -> DocId {
+        // Align tfs to docs
+        let tf = self.postings.tfs.skip_n(self.ptr.docs - self.ptr.tfs).unwrap();
+        self.ptr.tfs = self.ptr.docs;
+
+        // '-1' because tfs sequence has one more element from the sequence
+        // of next term in sequence
+        assert_eq!(self.postings.tfs.remains() - 1, self.postings.docs.remains());
+
+        // Tfs must have one more element than docs at the end. So that you can take difference
+        // between 'next' and 'previous' tfs
+        let next_tf = self.postings.tfs.next().unwrap();
+        self.ptr.tfs += 1;
+
+        // TODO current_tf is currently unused
+        self.current_tf = next_tf;
+
+        // TODO assign new subsequence to self.postings.positions to avoid skipping over the same
+        // elements in next round
+        let positions = DeltaDecoder::new(0, self.postings.positions.subsequence(tf as usize, (next_tf - tf) as usize)).collect();
+        println!("found in doc: {}, positions: {:?}", self.current, positions);
+
+        self.current()
+    }
+
+    fn advance(&mut self) -> Option<DocId> {
+        if let Some(next_doc_id) = self.postings.docs.next() {
+            self.ptr.docs += 1;
+            self.current = next_doc_id;
+
+            assert_eq!(self.postings.docs.next_position() - 1, self.ptr.docs);
+            Some(next_doc_id)
+        } else {
+            None
+        }
+    }
+}
+
+struct SimpleCursor<DS: Sequence, TS: Sequence, PS: Sequence> {
     postings: Postings<DS, TS, PS>,
+    ptr: Postings<usize, usize, usize>,
+    current: DocId,
+    current_tf: DocId,
+
+    i: usize,
+    term_id: TermId,
+}
+
+impl<DS: Sequence, TS: Sequence, PS: Sequence> SimpleCursor<DS, TS, PS> {
+    fn new(mut postings: Postings<DS, TS, PS>, doc_ptr: usize, index: usize, term_id: TermId) -> Self {
+        let first_doc = postings.docs.next().unwrap();
+        let first_tf = postings.tfs.next().unwrap();
+
+        SimpleCursor {
+            postings: postings,
+            ptr: Postings {
+                docs: doc_ptr + 1,
+                tfs: doc_ptr + 1,
+                positions: 0,
+            },
+            current: first_doc,
+            current_tf: first_tf,
+            i: index,
+            term_id: term_id,
+        }
+    }
 }
 
 fn get_postings<DS, TS, PS>(ptr: usize, len: usize, docs: DS, tfs: TS, pos: PS) -> Postings<DS, TS, PS>
@@ -105,49 +194,6 @@ fn exact_postings<DS, TS, PS>(header: &TrieNodeHeader, docs: DS, tfs: TS, pos: P
 //    Postings::merge_without_duplicates(&postings_to_merge[..])
 //}
 
-fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, exact: bool, q: &[STRING]) -> Option<Vec<DocId>>
-    where STRING: AsRef<str>,
-          DS: Sequence,
-          TS: Sequence,
-          PS: Sequence
-{
-    let q = q.iter().map(|s| s.as_ref()).collect::<Vec<&str>>();
-    println!("Searching query: {:?}", &q);
-    let term_headers = tryopt!(find_terms(&dict, exact, &q));
-
-    let mut term_sequences = term_headers.iter().enumerate().map(|(i, th)| {
-        println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
-
-        //let mut postings = if exact {
-        //    exact_postings(&th, docs.clone(), tfs.clone(), pos.clone())
-        //} else {
-        //    prefix_postings(&th, docs.clone(), tfs.clone(), pos.clone())
-        //};
-
-        let mut postings =    exact_postings(&th, docs.clone(), tfs.clone(), pos.clone());
-
-        let first_doc = postings.docs.next().unwrap();
-        let first_tf = postings.tfs.next().unwrap();
-
-        PostingSequences {
-            index: i,
-            term_id: th.term_id,
-            doc_position: th.postings_ptr as usize + 1,
-            tfs_position: th.postings_ptr as usize + 1,
-            current_doc: first_doc,
-            current_tf: first_tf,
-            postings: postings,
-        }
-    }).collect::<Vec<_>>();
-
-    // sort sequences ascending by their size to make daat skipping much faster
-    term_sequences.sort_by(|a, b| {
-        a.postings.docs.remains().cmp(&b.postings.docs.remains())
-    });
-
-    Some(search_daat(term_sequences))
-}
-
 fn find_terms<'a>(dict: &'a StaticTrie, exact: bool, query: &[&str]) -> Option<Vec<&'a TrieNodeHeader>> {
     let mut headers = Vec::new();
     for term in query.iter() {
@@ -159,85 +205,77 @@ fn find_terms<'a>(dict: &'a StaticTrie, exact: bool, query: &[&str]) -> Option<V
     Some(headers)
 }
 
-// search daat = search document at a time
-fn search_daat<DS, TS, PS>(mut term_sequences: Vec<PostingSequences<DS, TS, PS>>) -> Vec<DocId>
-    where DS: Sequence,
+fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, exact: bool, q: &[STRING]) -> Option<Vec<DocId>>
+    where STRING: AsRef<str>,
+          DS: Sequence,
           TS: Sequence,
           PS: Sequence
 {
+    let q = q.iter().map(|s| s.as_ref()).collect::<Vec<&str>>();
+    println!("Searching query: {:?}", &q);
+    let term_headers = tryopt!(find_terms(&dict, exact, &q));
+
+    let mut term_cursors = term_headers.iter().enumerate().map(|(i, th)| {
+        println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
+
+        //let mut postings = if exact {
+        //    exact_postings(&th, docs.clone(), tfs.clone(), pos.clone())
+        //} else {
+        //    prefix_postings(&th, docs.clone(), tfs.clone(), pos.clone())
+        //};
+
+        let mut postings =    exact_postings(&th, docs.clone(), tfs.clone(), pos.clone());
+        SimpleCursor::new(postings, th.postings_ptr as usize, i, th.term_id)
+    }).collect::<Vec<_>>();
+
+    // sort sequences ascending by their size to make daat skipping much faster
+    term_cursors.sort_by(|a, b| {
+        a.remains().cmp(&b.remains())
+    });
+
+    Some(search_daat(term_cursors))
+}
+
+// search daat = search document at a time
+fn search_daat<DS, TS, PS, C>(mut term_cursors: Vec<C>) -> Vec<DocId>
+    where DS: Sequence,
+          TS: Sequence,
+          PS: Sequence,
+          C: PostingsCursor<DS, TS, PS>
+{
     let mut result = Vec::new();
 
-    let mut current_doc_id = term_sequences[0].current_doc;
-    'merge: loop {
-        let mut i = 0;
-        while i < term_sequences.len() {
-            let mut current_seq = &mut term_sequences[i];
-            if current_seq.current_doc < current_doc_id {
-                if let (Some(doc_id), n_skipped) = current_seq.postings.docs.skip_to(current_doc_id) {
-                    current_seq.doc_position += n_skipped;
-                    current_seq.current_doc = doc_id;
+    let mut current_doc_id = term_cursors[0].current();
+    'intersect: loop {
+        'align: loop {
+            for cur in &mut term_cursors {
+                if let Some(doc_id) = cur.try_doc(current_doc_id) {
+                    if doc_id > current_doc_id {
+                        current_doc_id = doc_id;
+                        continue 'align;
+                    }
                 } else {
-                    break 'merge;
+                    break 'intersect;
                 }
             }
-
-            if current_seq.current_doc > current_doc_id {
-                // Aligning failed. Start from first term
-                current_doc_id = current_seq.current_doc;
-                i = 0;
-                continue;
-            }
-
-            // Try to align next query term
-            i += 1;
+            break 'align;
         }
 
-        // Align tfs with docs
-        for seq in term_sequences.iter_mut() {
-            // println!("align by: {}", seq.doc_position - seq.tfs_position);
-            let tf = seq.postings.tfs.skip_n(seq.doc_position - seq.tfs_position).unwrap();
-            seq.tfs_position = seq.doc_position;
-            // '-1' because tfs sequence has one more element from the sequence
-            // of next term in sequence
-            assert_eq!(seq.postings.tfs.remains() - 1, seq.postings.docs.remains());
+        for cur in term_cursors.iter_mut() {
+            // TODO this will output matched doc + evidence
+            let matched_doc = cur.confirm_doc();
+            result.push(matched_doc);
 
-            // Tfs must have one more element than docs at the end. So that you can take difference
-            // between 'next' and 'previous' tfs
-            let next_tf = seq.postings.tfs.next().unwrap();
-            // TODO current_tf is currently unused
-            seq.current_tf = next_tf;
-            seq.tfs_position += 1;
-            // println!("tf2({}) - tf1({}) = {}", next_tf, tf, next_tf - tf);
-            // println!("TFS: {:?}", seq.postings.tfs.clone().collect());
-
-            // TODO assign new subsequence to seq.positions to avoid skipping over the same
-            // elements in next round
-            let positions = DeltaDecoder::new(0, seq.postings.positions.subsequence(tf as usize, (next_tf - tf) as usize)).collect();
-            println!("found in doc: {}, positions: {:?}", current_doc_id, positions);
-        }
-
-        // Sliders are now aligned on 'doc_id' - this means a match, so output one result
-        // TODO You also have positional info from the block above, so output it too
-        result.push(current_doc_id);
-
-        // Advance all sliders to next doc and record
-        // the maximum doc_id for each slider
-        let mut max_doc_id = current_doc_id;
-        for sequence in term_sequences.iter_mut() {
-            if let Some(next_doc_id) = sequence.postings.docs.next() {
-                sequence.doc_position += 1;
-                assert_eq!(sequence.postings.docs.next_position() - 1, sequence.doc_position);
-                sequence.current_doc = next_doc_id;
-                if next_doc_id > max_doc_id {
-                    max_doc_id = next_doc_id;
+            if let Some(doc_id) = cur.advance() {
+                // Start next iteration alignment with maximum doc id
+                if doc_id > current_doc_id {
+                    current_doc_id = doc_id;
                 }
             } else {
-                break 'merge;
+                // This cursor is depleted and thus it can't produce no more matches
+                break 'intersect;
             }
         }
-
-        // Start next iteration alignment with maximum doc id
-        current_doc_id = max_doc_id;
     }
 
     result
