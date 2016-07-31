@@ -167,7 +167,7 @@ fn search_daat<DS, TS, PS, C>(mut term_cursors: Vec<C>) -> Vec<DocId>
             result.push(cur.current());
 
             // TODO delta decode these positions
-            let positions = cur.current_positions();
+            let (_, _, positions) = cur.catch_up();
 
             if let Some(doc_id) = cur.advance() {
                 // Start next iteration alignment with maximum doc id

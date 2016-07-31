@@ -4,9 +4,40 @@ use postings::{Postings,Sequence};
 pub trait PostingsCursor<DS, TS, PS> {
     fn advance(&mut self) -> Option<DocId>;
     fn advance_to(&mut self, doc_id: DocId) -> Option<DocId>;
-    fn current_positions(&mut self) -> PS;
+    fn catch_up<S: Sequence>(&mut self) -> (DocId, DocId, S);
     fn current(&self) -> DocId;
     fn remains(&self) -> usize;
+}
+
+
+pub struct SimpleCursor<DS, TS, PS> {
+    postings: Postings<DS, TS, PS>,
+    ptr: Postings<usize, usize, usize>,
+    current: DocId,
+    current_tf: DocId,
+
+    i: usize,
+    term_id: TermId,
+}
+
+impl<DS: Sequence, TS: Sequence, PS: Sequence> SimpleCursor<DS, TS, PS> {
+    pub fn new(mut postings: Postings<DS, TS, PS>, doc_ptr: usize, index: usize, term_id: TermId) -> Self {
+        let first_doc = postings.docs.next().unwrap();
+        let first_tf = postings.tfs.next().unwrap();
+
+        SimpleCursor {
+            postings: postings,
+            ptr: Postings {
+                docs: doc_ptr + 1,
+                tfs: doc_ptr + 1,
+                positions: 0,
+            },
+            current: first_doc,
+            current_tf: first_tf,
+            i: index,
+            term_id: term_id,
+        }
+    }
 }
 
 impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for SimpleCursor<DS, TS, PS> {
@@ -44,7 +75,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
         Some(self.current)
     }
 
-    fn current_positions(&mut self) -> PS {
+    fn catch_up<S: Sequence>(&mut self) -> (DocId, DocId, S) {
         // Align tfs to docs
         let tf = self.postings.tfs.skip_n(self.ptr.docs - self.ptr.tfs).unwrap();
         self.ptr.tfs = self.ptr.docs;
@@ -57,44 +88,12 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
         // between 'next' and 'previous' tfs
         let next_tf = self.postings.tfs.next().unwrap();
         self.ptr.tfs += 1;
-
-        // TODO current_tf is currently unused
-        self.current_tf = next_tf;
+        self.current_tf = next_tf - tf;
 
         // TODO assign new subsequence to self.postings.positions to avoid skipping over the same
         // elements in next round
-        let positions = self.postings.positions.subsequence(tf as usize, (next_tf - tf) as usize);
+        let positions = self.postings.positions.subsequence(tf as usize, self.current_tf as usize);
 
-        positions
-    }
-}
-
-pub struct SimpleCursor<DS: Sequence, TS: Sequence, PS: Sequence> {
-    postings: Postings<DS, TS, PS>,
-    ptr: Postings<usize, usize, usize>,
-    current: DocId,
-    current_tf: DocId,
-
-    i: usize,
-    term_id: TermId,
-}
-
-impl<DS: Sequence, TS: Sequence, PS: Sequence> SimpleCursor<DS, TS, PS> {
-    pub fn new(mut postings: Postings<DS, TS, PS>, doc_ptr: usize, index: usize, term_id: TermId) -> Self {
-        let first_doc = postings.docs.next().unwrap();
-        let first_tf = postings.tfs.next().unwrap();
-
-        SimpleCursor {
-            postings: postings,
-            ptr: Postings {
-                docs: doc_ptr + 1,
-                tfs: doc_ptr + 1,
-                positions: 0,
-            },
-            current: first_doc,
-            current_tf: first_tf,
-            i: index,
-            term_id: term_id,
-        }
+        (self.current, self.current_tf, positions)
     }
 }
