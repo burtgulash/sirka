@@ -133,8 +133,8 @@ fn search_daat<DS, TS, PS>(mut term_sequences: Vec<PostingSequences<DS, TS, PS>>
         while i < term_sequences.len() {
             let mut current_seq = &mut term_sequences[i];
             if current_seq.current_doc < current_doc_id {
-                if let Some(doc_id) = current_seq.docs.skip_to(current_doc_id) {
-                    current_seq.doc_position = current_seq.docs.next_position() - 1;
+                if let (Some(doc_id), n_skipped) = current_seq.docs.skip_to(current_doc_id) {
+                    current_seq.doc_position += n_skipped;
                     current_seq.current_doc = doc_id;
                 } else {
                     break 'merge;

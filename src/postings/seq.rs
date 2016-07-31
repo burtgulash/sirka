@@ -19,13 +19,15 @@ pub trait Sequence: Clone {
         next
     }
 
-    fn skip_to(&mut self, doc_id: DocId) -> Option<DocId> {
+    fn skip_to(&mut self, doc_id: DocId) -> (Option<DocId>, usize) {
+        let mut skipped = 0;
         while let Some(x) = self.next() {
+            skipped += 1;
             if x >= doc_id {
-                return Some(x)
+                return (Some(x), skipped)
             }
         }
-        None
+        (None, skipped)
     }
 
     fn collect(&mut self) -> Vec<DocId> {
