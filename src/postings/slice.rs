@@ -68,9 +68,9 @@ impl<'a> SliceSequence<'a> {
         }
     }
 
-    fn current(&self) -> Option<DocId> {
-        if self.position < self.seq.len() {
-            Some(self.seq[self.position])
+    fn get_at(&self, at: usize) -> Option<DocId> {
+        if at < self.seq.len() {
+            Some(self.seq[at])
         } else {
             None
         }
@@ -85,9 +85,8 @@ impl<'a> Sequence for SliceSequence<'a> {
     }
 
     fn next(&mut self) -> Option<DocId> {
-        let cur = self.current();
         self.position += 1;
-        cur
+        self.get_at(self.position - 1)
     }
 
     fn remains(&self) -> usize {
@@ -95,8 +94,11 @@ impl<'a> Sequence for SliceSequence<'a> {
     }
 
     fn skip_n(&mut self, n: usize) -> Option<DocId> {
-        self.position += n;
-        self.current()
+        if n == 0 {
+            return self.get_at(self.position);
+        }
+        self.position += n - 1;
+        self.next()
     }
 
     fn next_position(&self) -> usize {
