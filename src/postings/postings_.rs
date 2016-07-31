@@ -96,9 +96,7 @@ impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
     }
 }
 
-impl<'a, A: Sequence, B: Sequence, C: Sequence> PostingsCursor<'a, A, B, C> for MergerWithoutDuplicates<A, B, C> {
-    type Postings = SliceSequence<'a>;
-
+impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWithoutDuplicates<A, B, C> {
     fn advance(&mut self) -> Option<DocId> {
         if self.current_cursor.is_none() {
             return None;
@@ -109,10 +107,8 @@ impl<'a, A: Sequence, B: Sequence, C: Sequence> PostingsCursor<'a, A, B, C> for 
         let mut positions_buffer = Vec::new();
 
         loop {
-            let (doc, tf, mut positions) = current_cursor.catch_up();
-            while let Some(position) = positions.next() {
-                positions_buffer.push(position);
-            }
+            let (doc, tf, positions) = current_cursor.catch_up();
+            positions_buffer.extend_from_slice(&positions[..]);
 
             if let Some(mut next_cursor) = self.frontier.pop() {
                 self.processed += 1;
@@ -153,9 +149,9 @@ impl<'a, A: Sequence, B: Sequence, C: Sequence> PostingsCursor<'a, A, B, C> for 
         None
     }
 
-    fn catch_up(&'a mut self) -> (DocId, DocId, Self::Postings) {
+    fn catch_up(&mut self) -> (DocId, DocId, Vec<DocId>) {
         assert!(self.current_cursor.is_some());
-        let positions = self.current_positions.as_ref().unwrap().to_sequence();
+        let positions = self.current_positions.take().unwrap();
         (self.current_doc.unwrap(), self.current_tf.unwrap(), positions)
     }
 
@@ -188,12 +184,10 @@ impl<S: Sequence> Postings<S, S, S> {
 
         let mut merger = MergerWithoutDuplicates::new(&cum_encoded);
         while let Some(_) = merger.advance() {
-            let (doc, tf, mut positions) = merger.catch_up();
+            let (doc, tf, positions) = merger.catch_up();
             res.docs.push(doc);
             res.tfs.push(tf);
-            while let Some(position) = positions.next() {
-                res.positions.push(position);
-            }
+            res.positions.extend_from_slice(&positions);
         }
 
         res

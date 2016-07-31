@@ -1,12 +1,14 @@
 use types::*;
 use postings::{Postings,Sequence};
 
-pub trait PostingsCursor<'a, DS, TS, PS> {
-    type Postings: Sequence + 'a;
-
+pub trait PostingsCursor<DS, TS, PS>
+    where DS: Sequence,
+          TS: Sequence,
+          PS: Sequence,
+{
     fn advance(&mut self) -> Option<DocId>;
     fn advance_to(&mut self, doc_id: DocId) -> Option<DocId>;
-    fn catch_up(&'a mut self) -> (DocId, DocId, Self::Postings);
+    fn catch_up(&mut self) -> (DocId, DocId, Vec<DocId>);
     fn current(&self) -> DocId;
     fn remains(&self) -> usize;
 }
@@ -42,9 +44,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> SimpleCursor<DS, TS, PS> {
     }
 }
 
-impl<'a, DS: Sequence, TS: Sequence, PS: Sequence + 'a> PostingsCursor<'a, DS, TS, PS> for SimpleCursor<DS, TS, PS> {
-    type Postings = PS;
-
+impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for SimpleCursor<DS, TS, PS> {
     fn remains(&self) -> usize {
         self.postings.docs.remains()
     }
@@ -79,7 +79,7 @@ impl<'a, DS: Sequence, TS: Sequence, PS: Sequence + 'a> PostingsCursor<'a, DS, T
         Some(self.current)
     }
 
-    fn catch_up(&'a mut self) -> (DocId, DocId, Self::Postings) {
+    fn catch_up(&mut self) -> (DocId, DocId, Vec<DocId>) {
         // Align tfs to docs
         let tf = self.postings.tfs.skip_n(self.ptr.docs - self.ptr.tfs).unwrap();
         self.ptr.tfs = self.ptr.docs;
@@ -96,7 +96,7 @@ impl<'a, DS: Sequence, TS: Sequence, PS: Sequence + 'a> PostingsCursor<'a, DS, T
 
         // TODO assign new subsequence to self.postings.positions to avoid skipping over the same
         // elements in next round
-        let positions = self.postings.positions.subsequence(tf as usize, self.current_tf as usize);
+        let positions = self.postings.positions.subsequence(tf as usize, self.current_tf as usize).collect();
 
         (self.current, self.current_tf, positions)
     }

@@ -138,11 +138,11 @@ fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, exac
 }
 
 // search daat = search document at a time
-fn search_daat<'a, DS, TS, PS, C: 'a>(mut term_cursors: Vec<C>) -> Vec<DocId>
+fn search_daat<DS, TS, PS, C>(mut term_cursors: Vec<C>) -> Vec<DocId>
     where DS: Sequence,
           TS: Sequence,
           PS: Sequence,
-          C: PostingsCursor<'a, DS, TS, PS>
+          C: PostingsCursor<DS, TS, PS>,
 {
     let mut result = Vec::new();
 
@@ -166,6 +166,16 @@ fn search_daat<'a, DS, TS, PS, C: 'a>(mut term_cursors: Vec<C>) -> Vec<DocId>
             println!("found in doc: {}", cur.current());
             result.push(cur.current());
 
+            let evidence: DocId = {
+                let (_, tf, _) = cur.catch_up();
+                tf
+            };
+        }
+
+        for cur in &mut term_cursors {
+//            println!("found in doc: {}", cur.current());
+//            result.push(cur.current());
+//
             // TODO delta decode these positions
             // let evidence: Vec<DocId> = {
             //     let (_, _, mut positions) = cur.catch_up();
@@ -175,10 +185,6 @@ fn search_daat<'a, DS, TS, PS, C: 'a>(mut term_cursors: Vec<C>) -> Vec<DocId>
             //     }
             //     ps
             // };
-            let evidence: DocId = {
-                let (_, tf, _) = cur.catch_up();
-                tf
-            };
 
             if let Some(doc_id) = cur.advance() {
                 // Start next iteration alignment with maximum doc id

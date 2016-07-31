@@ -76,7 +76,7 @@ impl<'a> SliceSequence<'a> {
 }
 
 impl<'a> Sequence for SliceSequence<'a> {
-    fn subsequence(&self, start: usize, len: usize) -> Self {
+    fn subsequence(&self, start: usize, len: usize) -> SliceSequence<'a> {
         let mut sub = SliceSequence::new(&self.seq[..start+len]);
         sub.skip_n(start);
         sub
