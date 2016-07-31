@@ -1,14 +1,14 @@
 use std::cmp::Ordering;
-use std::iter::FromIterator; // TODO?
+use std::iter::FromIterator; // needed for ::from_iter
 use std::collections::BinaryHeap;
-use postings::{Postings,Sequence};
+use postings::{Postings,VecPostings,Sequence};
 use types::*;
 
 
 struct FrontierPointer<S> {
     current_doc: DocId,
     current_pos: usize,
-    postings: Postings<S>,
+    postings: Postings<S, S, S>,
 }
 
 impl<S> Ord for FrontierPointer<S> {
@@ -48,7 +48,7 @@ struct Merger<S> {
 }
 
 impl<S: Sequence> Merger<S> {
-    pub fn new(to_merge: &[Postings<S>]) -> Self {
+    pub fn new(to_merge: &[Postings<S, S, S>]) -> Self {
         let heap = BinaryHeap::from_iter(to_merge.iter().map(|pp| {
             let mut p = pp.clone();
             assert!(p.docs.remains() == p.tfs.remains());
@@ -80,8 +80,8 @@ impl<S: Sequence> Merger<S> {
     }
 }
 
-impl<S: Sequence> Postings<S> {
-    pub fn merge_without_duplicates(to_merge: &[Postings<S>]) -> Postings<Vec<DocId>> {
+impl<S: Sequence> Postings<S, S, S> {
+    pub fn merge_without_duplicates(to_merge: &[Self]) -> VecPostings {
         let mut merger = Merger::new(to_merge);
         let mut last_doc_id = 0;
         let mut tmp_pos: Vec<DocId> = Vec::new();

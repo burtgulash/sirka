@@ -8,7 +8,7 @@ use types::*;
 use util::*;
 use nutrie::TrieNodeHeader;
 use postings::encoding::{DeltaEncoder,CumEncoder};
-use postings::{Postings,PostingsStore,Sequence,SequenceStorage,SequenceEncoder};
+use postings::{VecPostings,Postings,PostingsStore,Sequence,SequenceStorage,SequenceEncoder};
 
 
 #[derive(Clone)]
@@ -147,14 +147,14 @@ struct _TrieNode<'n> {
     t: WrittenTerm<'n>,
     is_word: bool,
     pointer_in_dictbuf: Option<usize>,
-    postings: Option<Postings<Vec<DocId>>>,
-    prefix_postings: Option<Postings<Vec<DocId>>>,
+    postings: Option<VecPostings>,
+    prefix_postings: Option<VecPostings>,
     parent: Option<TrieNodeWeak<'n>>,
     children: Vec<TrieNodeRef<'n>>,
 }
 
 impl<'n> TrieNode<'n> {
-    fn new(parent: Option<TrieNode<'n>>, t: WrittenTerm<'n>, is_word: bool, postings: Option<Postings<Vec<DocId>>>) -> TrieNode<'n> {
+    fn new(parent: Option<TrieNode<'n>>, t: WrittenTerm<'n>, is_word: bool, postings: Option<VecPostings>) -> TrieNode<'n> {
         //if let Some(ref p) = postings {
         //    println!("");
         //    println!("docs: {:?}", &p.docs);

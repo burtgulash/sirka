@@ -1,6 +1,6 @@
 use std::mem;
 use types::*;
-use postings::{Postings,PostingsStore};
+use postings::{Postings,VecPostings,PostingsStore};
 
 pub struct TermBuf {
     pub buffers: Vec<Option<Vec<DocId>>>,
@@ -46,7 +46,7 @@ impl TermBuf {
 }
 
 impl<'a> PostingsStore for (&'a mut TermBuf, &'a mut TermBuf, &'a mut TermBuf) {
-    fn get_postings(&mut self, term_id: TermId) -> Option<Postings<Vec<DocId>>> {
+    fn get_postings(&mut self, term_id: TermId) -> Option<VecPostings> {
         Some(Postings {
             docs: tryopt!(self.0.get_termbuf(term_id)),
             tfs: tryopt!(self.1.get_termbuf(term_id)),

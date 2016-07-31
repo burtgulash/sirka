@@ -10,14 +10,16 @@ pub mod seq;
 
 use types::*;
 
-pub trait PostingsStore {
-    fn get_postings(&mut self, term_id: TermId) -> Option<Postings<Vec<DocId>>>;
-}
 
 #[derive(Clone)]
-pub struct Postings<T> {
-    pub docs: T,
-    pub tfs: T,
-    pub positions: T,
+pub struct Postings<A, B, C> {
+    pub docs: A,
+    pub tfs: B,
+    pub positions: C,
 }
 
+pub type VecPostings = Postings<Vec<DocId>, Vec<DocId>, Vec<DocId>>;
+
+pub trait PostingsStore {
+    fn get_postings(&mut self, term_id: TermId) -> Option<VecPostings>;
+}
