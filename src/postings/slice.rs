@@ -95,7 +95,7 @@ impl<'a> Sequence for SliceSequence<'a> {
 
     fn skip_n(&mut self, n: usize) -> Option<DocId> {
         if n == 0 {
-            return self.get_at(self.position);
+            return self.get_at(self.position - 1);
         }
         self.position += n - 1;
         self.next()

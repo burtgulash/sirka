@@ -154,6 +154,7 @@ fn search_daat<DS, TS, PS>(mut term_sequences: Vec<PostingSequences<DS, TS, PS>>
 
         // Align tfs with docs
         for seq in term_sequences.iter_mut() {
+            // println!("align by: {}", seq.doc_position - seq.tfs_position);
             let tf = seq.tfs.skip_n(seq.doc_position - seq.tfs_position).unwrap();
             seq.tfs_position = seq.doc_position;
             // '-1' because tfs sequence has one more element from the sequence
@@ -166,6 +167,8 @@ fn search_daat<DS, TS, PS>(mut term_sequences: Vec<PostingSequences<DS, TS, PS>>
             // TODO current_tf is currently unused
             seq.current_tf = next_tf;
             seq.tfs_position += 1;
+            // println!("tf2({}) - tf1({}) = {}", next_tf, tf, next_tf - tf);
+            // println!("TFS: {:?}", seq.tfs.clone().collect());
 
             // TODO assign new subsequence to seq.positions to avoid skipping over the same
             // elements in next round
