@@ -2,11 +2,13 @@ pub use self::slice::*;
 pub use self::encoding::*;
 pub use self::postings_::*;
 pub use self::seq::*;
+pub use self::cursor::*;
 
 pub mod slice;
 pub mod encoding;
 pub mod postings_;
 pub mod seq;
+pub mod cursor;
 
 use types::*;
 
