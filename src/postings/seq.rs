@@ -27,6 +27,14 @@ pub trait Sequence: Clone {
         }
         None
     }
+
+    fn collect(&mut self) -> Vec<DocId> {
+        let mut res = Vec::with_capacity(self.remains());
+        while let Some(x) = self.next() {
+            res.push(x);
+        }
+        res
+    }
 }
 
 pub trait SequenceEncoder {

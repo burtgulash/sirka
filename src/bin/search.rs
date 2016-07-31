@@ -43,35 +43,37 @@ fn main() {
     let mut tfs_reader = create_reader(indexdir, "tfs");
     let mut tfsbuf = Vec::new();
     tfs_reader.read_to_end(&mut tfsbuf).unwrap();
-    let tfs = DeltaDecoder::new(0, bytes_to_typed(&tfsbuf).to_sequence());
+    let tfs = bytes_to_typed(&tfsbuf).to_sequence();
 
     let mut pos_reader = create_reader(indexdir, "positions");
     let mut posbuf = Vec::new();
     pos_reader.read_to_end(&mut posbuf).unwrap();
     let pos = bytes_to_typed(&posbuf).to_sequence();
 
-    if let Some(result) = query(&dict, docs, tfs, query_to_seach) {
+    if let Some(result) = query(&dict, docs, tfs, pos, query_to_seach) {
         println!("Found in {} docs!", result.len());
     } else {
         println!("Not found!");
     }
 }
 
-struct PostingSequences<DS: Sequence, TS: Sequence> {
+struct PostingSequences<DS: Sequence, TS: Sequence, PS: Sequence> {
     index: usize,
-    current_doc: DocId,
     doc_position: usize,
     tfs_position: usize,
+    current_doc: DocId,
+    current_tf: DocId,
     term_id: TermId,
     docs: DS,
     tfs: TS,
-//    pos: S,
+    positions: PS,
 }
 
-fn query<STRING, DS, TS>(dict: &StaticTrie, docs: DS, tfs: TS, q: &[STRING]) -> Option<Vec<DocId>>
+fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, q: &[STRING]) -> Option<Vec<DocId>>
     where STRING: AsRef<str>,
           DS: Sequence,
-          TS: Sequence
+          TS: Sequence,
+          PS: Sequence
 {
     let q = q.iter().map(|s| s.as_ref()).collect::<Vec<&str>>();
     println!("Searching query: {:?}", &q);
@@ -79,16 +81,22 @@ fn query<STRING, DS, TS>(dict: &StaticTrie, docs: DS, tfs: TS, q: &[STRING]) -> 
 
     let mut term_sequences = term_headers.iter().enumerate().map(|(i, th)| {
         println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
+
         let mut d = docs.subsequence(th.postings_ptr as usize, th.num_postings as usize);
+        let mut t = tfs.subsequence(th.postings_ptr as usize, th.num_postings as usize + 1);
         let docs_next_ptr = d.next_position();
+        let first_tf = t.next().unwrap();
+
         PostingSequences {
             index: i,
             doc_position: docs_next_ptr,
-            tfs_position: docs_next_ptr - 1,
+            tfs_position: docs_next_ptr,
             current_doc: d.next().unwrap(),
+            current_tf: first_tf,
             term_id: th.term_id,
             docs: d,
-            tfs: tfs.subsequence(th.postings_ptr as usize, th.num_postings as usize),
+            tfs: t,
+            positions: pos.subsequence(first_tf as usize, pos.remains() - first_tf as usize),
         }
     }).collect::<Vec<_>>();
 
@@ -112,9 +120,10 @@ fn find_terms<'a>(dict: &'a StaticTrie, query: &[&str]) -> Option<Vec<&'a TrieNo
 }
 
 // search daat = search document at a time
-fn search_daat<DS, TS>(mut term_sequences: Vec<PostingSequences<DS, TS>>) -> Vec<DocId>
+fn search_daat<DS, TS, PS>(mut term_sequences: Vec<PostingSequences<DS, TS, PS>>) -> Vec<DocId>
     where DS: Sequence,
-          TS: Sequence
+          TS: Sequence,
+          PS: Sequence
 {
     let mut result = Vec::new();
 
@@ -143,14 +152,30 @@ fn search_daat<DS, TS>(mut term_sequences: Vec<PostingSequences<DS, TS>>) -> Vec
             i += 1;
         }
 
-        // Sliders are now aligned on 'doc_id'.
-        // This means a match, so output one result
-        result.push(current_doc_id);
+        // Align tfs with docs
         for seq in term_sequences.iter_mut() {
-            seq.tfs.skip_n(seq.doc_position - seq.tfs_position);
+            let tf = seq.tfs.skip_n(seq.doc_position - seq.tfs_position).unwrap();
             seq.tfs_position = seq.doc_position;
-            assert_eq!(seq.tfs.remains(), seq.docs.remains());
+            // '-1' because tfs sequence has one more element from the sequence
+            // of next term in sequence
+            assert_eq!(seq.tfs.remains() - 1, seq.docs.remains());
+
+            // Tfs must have one more element than docs at the end. So that you can take difference
+            // between 'next' and 'previous' tfs
+            let next_tf = seq.tfs.next().unwrap();
+            // TODO current_tf is currently unused
+            seq.current_tf = next_tf;
+            seq.tfs_position += 1;
+
+            // TODO assign new subsequence to seq.positions to avoid skipping over the same
+            // elements in next round
+            let positions = DeltaDecoder::new(0, seq.positions.subsequence(tf as usize, (next_tf - tf) as usize)).collect();
+            println!("found in doc: {}, positions: {:?}", current_doc_id, positions);
         }
+
+        // Sliders are now aligned on 'doc_id' - this means a match, so output one result
+        // TODO You also have positional info from the block above, so output it too
+        result.push(current_doc_id);
 
         // Advance all sliders to next doc and record
         // the maximum doc_id for each slider

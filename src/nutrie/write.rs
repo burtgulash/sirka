@@ -126,6 +126,11 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
     // Flush root2 node
     current.flush(&parent, &mut dict_ptr, &mut postings_ptr, &mut last_tf, dict_out, enc);
 
+    // Don't forget to write last_tf so that differences tfs[i + 1] - tfs[i] work for all doc
+    // positions
+    let _ = enc.tfs.write(last_tf).unwrap();
+
+
     for t in terms.iter() {
         dict_out.write(&t.term.as_bytes()).unwrap();
     }
