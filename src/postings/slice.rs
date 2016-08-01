@@ -111,7 +111,7 @@ mod tests {
     fn test_sequence() {
         let docs = vec![5,7,3,9,45,1,0,4,7];
         let mut seq = (&docs[..]).to_sequence();
-        while let Some(doc) = seq.next() {
+        while let Some(doc) = seq.advance() {
             println!("Next doc: {}", doc);
         }
         println!("---");

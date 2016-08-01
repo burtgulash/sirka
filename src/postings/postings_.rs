@@ -108,8 +108,9 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
         let mut positions_buffer = Vec::new();
         let current_doc = self.current_doc;
 
+        let mut finished = false;
         loop {
-            let (doc, tf, positions) = current_cursor.catch_up();
+            let (tf, positions) = current_cursor.catch_up();
             positions_buffer.extend_from_slice(&positions[..]);
             self.frontier.push(current_cursor);
 
@@ -123,6 +124,8 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
                         break;
                     }
                 } else {
+                    let (tf, positions) = next_cursor.catch_up();
+                    positions_buffer.extend_from_slice(&positions[..]);
                     self.next_cursor = None;
                     break;
                 }
@@ -151,9 +154,9 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
         None
     }
 
-    fn catch_up(&mut self) -> (DocId, DocId, Vec<DocId>) {
+    fn catch_up(&mut self) -> (DocId, Vec<DocId>) {
         let positions = mem::replace(&mut self.current_positions, Vec::new());
-        (self.current_doc, self.current_tf, positions)
+        (self.current_tf, positions)
     }
 
     fn current(&self) -> DocId {
@@ -167,29 +170,16 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
 
 impl<S: Sequence> Postings<S, S, S> {
     pub fn merge_without_duplicates(to_merge: &[Self]) -> VecPostings {
-        let cum_encoded: Vec<_> = to_merge.iter().map(|p| {
-            assert_eq!(p.tfs.remains() - 1, p.docs.remains());
-            // println!("DOCS: {:?}", p.docs.clone().to_vec());
-            // println!("tfs: {:?}", p.tfs.clone().to_vec());
-            // println!("-----------");
-            Postings {
-                // TODO clones necessary?
-                docs: p.docs.clone(),
-                tfs: p.tfs.clone(),
-                positions: p.positions.clone(),
-            }
-        }).collect();
-
         let mut res = VecPostings {
             docs: Vec::new(),
             tfs: Vec::new(),
             positions: Vec::new(),
         };
 
-        let mut merger = MergerWithoutDuplicates::new(&cum_encoded);
-        while let Some(_) = merger.advance() {
-            let (doc, tf, positions) = merger.catch_up();
-            println!("MERGED POS: {:?}", positions);
+        let mut merger = MergerWithoutDuplicates::new(to_merge);
+        while let Some(doc) = merger.advance() {
+            let (tf, positions) = merger.catch_up();
+            println!("DOC: {}, TF: {}, MERGED POS: {:?}", doc, tf, positions);
             res.docs.push(doc);
             res.tfs.push(tf);
             res.positions.extend_from_slice(&positions);

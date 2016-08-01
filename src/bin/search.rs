@@ -167,7 +167,7 @@ fn search_daat<DS, TS, PS, C>(mut term_cursors: Vec<C>) -> Vec<DocId>
             result.push(cur.current());
 
             let evidence: DocId = {
-                let (_, tf, _) = cur.catch_up();
+                let (tf, _) = cur.catch_up();
                 tf
             };
         }
