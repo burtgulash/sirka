@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 use std::cmp::Ordering;
+use std::mem;
 use std::iter::FromIterator; // needed for ::from_iter
 use std::collections::BinaryHeap;
 use postings::{Postings,VecPostings,Sequence,SequenceStorage,PostingsCursor,SimpleCursor};
@@ -67,13 +68,12 @@ fn create_heap<A: Sequence, B: Sequence, C: Sequence>(to_merge: &[Postings<A, B,
 
 struct MergerWithoutDuplicates<A, B, C> {
     frontier: BinaryHeap<SimpleCursor<A, B, C>>,
-    current_cursor: Option<SimpleCursor<A, B, C>>,
+    next_cursor: Option<SimpleCursor<A, B, C>>,
     current_doc: DocId,
     current_positions: Vec<DocId>,
     current_tf: DocId,
     size: usize,
     processed: usize,
-    //phantom: PhantomData<&'a SliceSequence<'a>>,
 }
 
 impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
@@ -83,16 +83,14 @@ impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
 
         let mut heap = create_heap(to_merge);
         let mut first_cursor = heap.pop();
-        let _ = first_cursor.advance().unwrap();
-        let (doc, tf, positions) = first_cursor.catch_up();
-
+        let _ = first_cursor.as_mut().unwrap().advance();
 
         MergerWithoutDuplicates {
             frontier: heap,
-            current_cursor: first_cursor,
-            current_doc: doc,
-            current_positions: tf,
-            current_tf: positions,
+            next_cursor: first_cursor,
+            current_doc: 0,
+            current_positions: Vec::new(),
+            current_tf: 1137,
             size: size,
             processed: 1,
         }
@@ -101,33 +99,36 @@ impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
 
 impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWithoutDuplicates<A, B, C> {
     fn advance(&mut self) -> Option<DocId> {
-        if self.current_cursor.is_none() {
+        if self.next_cursor.is_none() {
             return None;
         }
 
+        let mut current_cursor = self.next_cursor.take().unwrap();
+
         let mut positions_buffer = Vec::new();
-        let mut current_cursor = self.current_cursor;
         let current_doc = self.current_doc;
-        asser_eq!(current_doc, self.current_cursor.current());
 
         loop {
-            println!("CACHING UP {}", current_doc);
             let (doc, tf, positions) = current_cursor.catch_up();
             positions_buffer.extend_from_slice(&positions[..]);
+            self.frontier.push(current_cursor);
 
             if let Some(mut next_cursor) = self.frontier.pop() {
                 self.processed += 1;
-                let next_doc = next_cursor.current();
-                next_cursor.advance();
-
-                if next_doc == current_doc {
-                    self.frontier.push(next_cursor);
+                if let Some(next_doc) = next_cursor.advance() {
+                    if next_doc == current_doc {
+                        current_cursor = next_cursor;
+                    } else {
+                        self.next_cursor = Some(next_cursor);
+                        break;
+                    }
                 } else {
-                    self.current_cursor = Some(next_cursor);
+                    self.next_cursor = None;
                     break;
                 }
             } else {
-                self.current_cursor = None;
+                self.next_cursor = None;
+                break;
             }
         }
 
@@ -136,15 +137,11 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
         self.current_tf = unique_positions.len() as DocId;
         self.current_positions = unique_positions;
         self.current_doc = current_doc;
-        self.current_doc
+        Some(self.current_doc)
     }
 
     // TODO use this as default impl for trait
     fn advance_to(&mut self, doc_id: DocId) -> Option<DocId> {
-        if self.current() == doc_id {
-            return Some(doc_id);
-        }
-
         while let Some(next_doc_id) = self.advance() {
             if next_doc_id >= doc_id {
                 return Some(next_doc_id);
@@ -155,14 +152,12 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
     }
 
     fn catch_up(&mut self) -> (DocId, DocId, Vec<DocId>) {
-        assert!(self.current_cursor.is_some());
-        let positions = self.current_positions.take().unwrap();
-        (self.current_doc.unwrap(), self.current_tf.unwrap(), positions)
+        let positions = mem::replace(&mut self.current_positions, Vec::new());
+        (self.current_doc, self.current_tf, positions)
     }
 
     fn current(&self) -> DocId {
-        assert!(self.current_cursor.is_some());
-        self.current_doc.unwrap()
+        self.current_doc
     }
 
     fn remains(&self) -> usize {
@@ -174,9 +169,9 @@ impl<S: Sequence> Postings<S, S, S> {
     pub fn merge_without_duplicates(to_merge: &[Self]) -> VecPostings {
         let cum_encoded: Vec<_> = to_merge.iter().map(|p| {
             assert_eq!(p.tfs.remains() - 1, p.docs.remains());
-            println!("DOCS: {:?}", p.docs.clone().to_vec());
-            println!("tfs: {:?}", p.tfs.clone().to_vec());
-            println!("-----------");
+            // println!("DOCS: {:?}", p.docs.clone().to_vec());
+            // println!("tfs: {:?}", p.tfs.clone().to_vec());
+            // println!("-----------");
             Postings {
                 // TODO clones necessary?
                 docs: p.docs.clone(),

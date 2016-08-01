@@ -28,6 +28,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> SimpleCursor<DS, TS, PS> {
     pub fn new(mut postings: Postings<DS, TS, PS>, doc_ptr: usize, index: usize, term_id: TermId) -> Self {
         let first_doc = postings.docs.current().unwrap();
         let first_tf = postings.tfs.current().unwrap();
+        // let _ = postings.docs.next();
 
         SimpleCursor {
             postings: postings,
@@ -78,20 +79,14 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
     }
 
     fn catch_up(&mut self) -> (DocId, DocId, Vec<DocId>) {
-        println!("MOVE BY: {} - {}", self.ptr.docs, self.ptr.tfs);
-
         // Align tfs to docs
-        self.postings.tfs.move_n(self.ptr.docs - self.ptr.tfs);
+        self.postings.tfs.move_n(self.ptr.docs - 1 - self.ptr.tfs);
         let tf = self.postings.tfs.current().unwrap();
-        println!("CATCH UP TF: {}", tf);
-        self.ptr.tfs = self.ptr.docs;
-
-        let mut pcpy = self.postings.positions.clone();
-        println!("POSITIONS: {:?}, {} - {}", pcpy.to_vec(), tf, self.current_tf);
+        self.ptr.tfs = self.ptr.docs - 1;
 
         // '-1' because tfs sequence has one more element from the sequence
         // of next term in sequence
-        assert_eq!(self.postings.tfs.remains() - 1, self.postings.docs.remains());
+        // assert_eq!(self.postings.tfs.remains() - 1, self.postings.docs.remains());
 
         // Tfs must have one more element than docs at the end. So that you can take difference
         // between 'next' and 'previous' tfs

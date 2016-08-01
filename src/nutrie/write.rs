@@ -308,7 +308,6 @@ impl<'n> TrieNode<'n> {
             ($postings:expr) => {
                 assert!(is_sorted_ascending(&$postings.docs)); // TODO disable this for performance?
 
-                println!("ORig tfs: {:?}", $postings.tfs);
                 let mut cum = 0;
                 for ptr in &mut $postings.tfs {
                     let tf = *ptr;
@@ -324,8 +323,6 @@ impl<'n> TrieNode<'n> {
                     enc.tfs.write(*last_tf + cumtf).unwrap();
                 }
                 $postings.tfs.push(cum);
-                println!("Trans tfs: {:?}", $postings.tfs);
-                println!("---\n");
 
                 *postings_ptr += $postings.docs.len() as DocId;
                 *last_tf += cum;
