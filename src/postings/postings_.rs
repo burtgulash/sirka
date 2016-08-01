@@ -66,6 +66,7 @@ fn create_heap<A: Sequence, B: Sequence, C: Sequence>(to_merge: &[Postings<A, B,
 
 struct MergerWithoutDuplicates<A: Sequence, B: Sequence, C: Sequence> {
     frontier: BinaryHeap<FrontierPointer<A, B, C>>,
+    current_ptr: Option<FrontierPointer<A,B,C>>,
     current_doc: DocId,
     current_positions: Vec<DocId>,
     current_tf: DocId,
@@ -81,10 +82,10 @@ impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
         let mut heap = create_heap(to_merge);
         let mut first_ptr = heap.pop().unwrap();
         let first_doc = first_ptr.current;
-        heap.push(first_ptr);
 
         MergerWithoutDuplicates {
             frontier: heap,
+            current_ptr: Some(first_ptr),
             current_doc: first_doc,
             current_positions: Vec::new(),
             current_tf: 1137,
@@ -104,29 +105,35 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
         //println!("CUR: {}", self.current_doc);
                     //println!("HEAP SIZE: {}", self.frontier.len());
 
+        let mut ptr = self.current_ptr.take().unwrap();
         let current_doc = self.current_doc;
+
         loop {
             //println!("LOOPING");
-            if let Some(mut next_ptr) = self.frontier.pop() {
-                if next_ptr.current == current_doc {
-                    self.processed += 1;
-                    let (tf, positions) = next_ptr.cursor.catch_up();
-                    positions_buffer.extend_from_slice(&positions[..]);
+            if ptr.current == current_doc {
+                self.processed += 1;
+                let (tf, positions) = ptr.cursor.catch_up();
+                positions_buffer.extend_from_slice(&positions[..]);
 
-                    if let Some(next_doc) = next_ptr.cursor.advance() {
-                        next_ptr.current = next_doc;
-                        //println!("putting back: {}", next_doc);
-                        self.frontier.push(next_ptr);
-                    }
-                } else {
-                    self.current_doc = next_ptr.current;
-                        //println!("putting backa: {}", self.current_doc);
-                    self.frontier.push(next_ptr);
-                    //println!("HEAP SIZE: {}", self.frontier.len());
-                    break;
+                if let Some(next_doc) = ptr.cursor.advance() {
+                    ptr.current = next_doc;
+                    //println!("putting back: {}", next_doc);
+                    self.frontier.push(ptr);
                 }
             } else {
+                self.current_doc = ptr.current;
+                    //println!("putting backa: {}", self.current_doc);
+                self.current_ptr = Some(ptr);
+                // self.frontier.push(ptr);
+                //println!("HEAP SIZE: {}", self.frontier.len());
+                break;
+            }
+
+            if let Some(mut next_ptr) = self.frontier.pop() {
+                ptr = next_ptr;
+            } else {
                 self.finished = true;
+                self.current_ptr = None;
                 break;
             }
         }
