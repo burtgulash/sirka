@@ -9,7 +9,7 @@ pub trait PostingsCursor<DS, TS, PS>
     fn advance(&mut self) -> Option<DocId>;
     fn advance_to(&mut self, doc_id: DocId) -> Option<DocId>;
     fn catch_up(&mut self) -> (DocId, Vec<DocId>);
-    fn current(&self) -> DocId;
+    fn current(&self) -> Option<DocId>;
     fn remains(&self) -> usize;
 }
 
@@ -51,13 +51,12 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
         self.postings.docs.remains() + 1
     }
 
-    fn current(&self) -> DocId {
-        self.current.unwrap()
+    fn current(&self) -> Option<DocId> {
+        self.current
     }
 
     fn advance(&mut self) -> Option<DocId> {
         self.advanced = true;
-        println!("ADVANCIND");
         self.ptr.docs += 1;
         if let Some(doc_id) = self.postings.docs.advance() {
             let current = self.current;
@@ -88,7 +87,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
         assert!(self.advanced);
         self.advanced = false;
 
-        println!("DOCPTR: {}, TFPTR: {}", self.ptr.docs, self.ptr.tfs);
+        //println!("DOCPTR: {}, TFPTR: {}", self.ptr.docs, self.ptr.tfs);
         // Align tfs to docs
         self.postings.tfs.move_n(self.ptr.docs - 2 - self.ptr.tfs).unwrap();
         self.ptr.tfs = self.ptr.docs - 2;

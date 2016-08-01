@@ -267,9 +267,6 @@ impl<'n> TrieNode<'n> {
                 for p in &borrows {
                     // TODO this shouldn't be necessary
                     if let Some(ref postings) = p.postings {
-                        println!("TFS: {:?}", &postings.tfs);
-                        println!("DOCS: {:?}", &postings.docs);
-                        println!("---");
                         postings_to_merge.push(Postings {
                             docs: (&postings.docs).to_sequence(),
                             tfs: (&postings.tfs).to_sequence(),
@@ -277,9 +274,6 @@ impl<'n> TrieNode<'n> {
                         });
                     }
                     if let Some(ref postings) = p.prefix_postings {
-                        println!("TFS: {:?}", &postings.tfs);
-                        println!("DOCS: {:?}", &postings.docs);
-                        println!("---");
                         postings_to_merge.push(Postings {
                             docs: (&postings.docs).to_sequence(),
                             tfs: (&postings.tfs).to_sequence(),

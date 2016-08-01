@@ -10,7 +10,7 @@ use types::*;
 impl<A: Sequence, B: Sequence, C: Sequence> Ord for SimpleCursor<A, B, C> {
     fn cmp(&self, other: &Self) -> Ordering {
         // Switch compare order because Rust's BinaryHeap is a maxheap We want a minheap
-        self.current().cmp(&other.current()).reverse()
+        self.current().unwrap().cmp(&other.current().unwrap()).reverse()
     }
 }
 
@@ -22,7 +22,7 @@ impl<A: Sequence, B: Sequence, C: Sequence> PartialOrd for SimpleCursor<A, B, C>
 
 impl<A: Sequence, B: Sequence, C: Sequence> PartialEq for SimpleCursor<A, B, C> {
     fn eq(&self, other: &Self) -> bool {
-        self.current() == other.current()
+        self.current().unwrap() == other.current().unwrap()
     }
 }
 
@@ -79,16 +79,15 @@ struct MergerWithoutDuplicates<A, B, C> {
 impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
     pub fn new(to_merge: &[Postings<A, B, C>]) -> Self {
         let size = to_merge.iter().map(|p| p.docs.remains()).fold(0, |acc, x| acc + x);
-        println!("merged SIZE: {}", size);
 
         let mut heap = create_heap(to_merge);
         let mut first_cursor = heap.pop();
-        let _ = first_cursor.as_mut().unwrap().advance();
+        let first_doc = first_cursor.as_mut().unwrap().advance().unwrap();
 
         MergerWithoutDuplicates {
             frontier: heap,
             next_cursor: first_cursor,
-            current_doc: 0,
+            current_doc: first_doc,
             current_positions: Vec::new(),
             current_tf: 1137,
             size: size,
@@ -112,7 +111,9 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
         loop {
             let (tf, positions) = current_cursor.catch_up();
             positions_buffer.extend_from_slice(&positions[..]);
-            self.frontier.push(current_cursor);
+            if let Some(_) = current_cursor.current() {
+                self.frontier.push(current_cursor);
+            }
 
             if let Some(mut next_cursor) = self.frontier.pop() {
                 self.processed += 1;
@@ -121,6 +122,7 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
                         current_cursor = next_cursor;
                     } else {
                         self.next_cursor = Some(next_cursor);
+                        self.current_doc = next_doc;
                         break;
                     }
                 } else {
@@ -139,8 +141,7 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
         let unique_positions = keep_unique(&positions_buffer);
         self.current_tf = unique_positions.len() as DocId;
         self.current_positions = unique_positions;
-        self.current_doc = current_doc;
-        Some(self.current_doc)
+        Some(current_doc)
     }
 
     // TODO use this as default impl for trait
@@ -159,8 +160,8 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
         (self.current_tf, positions)
     }
 
-    fn current(&self) -> DocId {
-        self.current_doc
+    fn current(&self) -> Option<DocId> {
+        Some(self.current_doc)
     }
 
     fn remains(&self) -> usize {
@@ -179,11 +180,15 @@ impl<S: Sequence> Postings<S, S, S> {
         let mut merger = MergerWithoutDuplicates::new(to_merge);
         while let Some(doc) = merger.advance() {
             let (tf, positions) = merger.catch_up();
-            println!("DOC: {}, TF: {}, MERGED POS: {:?}", doc, tf, positions);
+            //println!("DOC: {}, TF: {}, MERGED POS: {:?}", doc, tf, positions);
             res.docs.push(doc);
             res.tfs.push(tf);
             res.positions.extend_from_slice(&positions);
         }
+        // println!("MERGED: docs: {:?}", &res.docs);
+        // println!("MERGED: tfs: {:?}", &res.tfs);
+        // println!("MERGED: pos: {:?}", &res.positions);
+        // println!("---");
 
         res
     }
