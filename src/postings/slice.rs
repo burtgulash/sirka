@@ -84,10 +84,6 @@ impl<'a> Sequence for SliceSequence<'a> {
         sub
     }
 
-    fn next_position(&self) -> usize {
-        self.position
-    }
-
     fn current(&self) -> DocId {
         assert!(self.position <= self.seq.len());
         self.seq[self.position - 1]

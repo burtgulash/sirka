@@ -4,7 +4,6 @@ use types::*;
 pub trait Sequence: Clone {
     fn remains(&self) -> usize;
     fn subsequence(&self, start: usize, len: usize) -> Self;
-    fn next_position(&self) -> usize;
     fn current(&self) -> DocId;
     fn next(&mut self) -> Option<DocId>;
     //fn rewind(&mut self) -> DocId;

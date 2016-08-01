@@ -15,7 +15,7 @@ struct FrontierPointer<A: Sequence, B: Sequence, C: Sequence> {
 impl<A: Sequence, B: Sequence, C: Sequence> Ord for FrontierPointer<A, B, C> {
     fn cmp(&self, other: &Self) -> Ordering {
         // Switch compare order because Rust's BinaryHeap is a maxheap We want a minheap
-        self.current.cmp(&other.current)
+        self.current.cmp(&other.current).reverse()
     }
 }
 
@@ -66,12 +66,12 @@ fn create_heap<A: Sequence, B: Sequence, C: Sequence>(to_merge: &[Postings<A, B,
 
 struct MergerWithoutDuplicates<A: Sequence, B: Sequence, C: Sequence> {
     frontier: BinaryHeap<FrontierPointer<A, B, C>>,
-    ptr: Option<FrontierPointer<A, B, C>>,
     current_doc: DocId,
     current_positions: Vec<DocId>,
     current_tf: DocId,
     size: usize,
     processed: usize,
+    finished: bool,
 }
 
 impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
@@ -80,62 +80,65 @@ impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
 
         let mut heap = create_heap(to_merge);
         let mut first_ptr = heap.pop().unwrap();
+        let first_doc = first_ptr.current;
+        heap.push(first_ptr);
 
         MergerWithoutDuplicates {
             frontier: heap,
-            current_doc: first_ptr.current,
-            ptr: Some(first_ptr),
+            current_doc: first_doc,
             current_positions: Vec::new(),
             current_tf: 1137,
             size: size,
             processed: 1,
+            finished: false,
         }
     }
 }
 
 impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWithoutDuplicates<A, B, C> {
     fn advance(&mut self) -> Option<DocId> {
-        if self.ptr.is_none() {
+        if self.finished {
             return None;
         }
-
         let mut positions_buffer = Vec::new();
-        let mut ptr = self.ptr.take().unwrap();
-        let mut current_doc = self.current_doc;
+        //println!("CUR: {}", self.current_doc);
+                    //println!("HEAP SIZE: {}", self.frontier.len());
 
-        let (tf, positions) = ptr.cursor.catch_up();
-        positions_buffer.extend_from_slice(&positions[..]);
-
-        if let Some(doc_id) = ptr.cursor.advance() {
-            self.frontier.push(ptr);
-
-            loop {
-                if let Some(mut next_ptr) = self.frontier.pop() {
+        let current_doc = self.current_doc;
+        loop {
+            //println!("LOOPING");
+            if let Some(mut next_ptr) = self.frontier.pop() {
+                if next_ptr.current == current_doc {
                     self.processed += 1;
                     let (tf, positions) = next_ptr.cursor.catch_up();
                     positions_buffer.extend_from_slice(&positions[..]);
 
                     if let Some(next_doc) = next_ptr.cursor.advance() {
-                        if next_doc == current_doc {
-                            self.frontier.push(next_ptr)
-                        } else {
-                            self.ptr = Some(next_ptr);
-                            self.current_doc = next_doc;
-                            break;
-                        }
-                    } else {
-                        break;
+                        next_ptr.current = next_doc;
+                        //println!("putting back: {}", next_doc);
+                        self.frontier.push(next_ptr);
                     }
                 } else {
-                    self.ptr = None;
+                    self.current_doc = next_ptr.current;
+                        //println!("putting backa: {}", self.current_doc);
+                    self.frontier.push(next_ptr);
+                    //println!("HEAP SIZE: {}", self.frontier.len());
+                    break;
                 }
+            } else {
+                self.finished = true;
+                break;
             }
         }
+        //println!("MIMO LOOP");
 
+
+        assert!(positions_buffer.len() > 0);
         positions_buffer.sort();
         let unique_positions = keep_unique(&positions_buffer);
         self.current_tf = unique_positions.len() as DocId;
         self.current_positions = unique_positions;
+
         Some(current_doc)
     }
 
@@ -172,18 +175,26 @@ impl<S: Sequence> Postings<S, S, S> {
             positions: Vec::new(),
         };
 
+ //       println!("TO MERGE:");
+ //       for m in to_merge.iter() {
+ //           println!("DOCS: {:?}", m.docs.clone().to_vec());
+ //           println!("tfs: {:?}", m.tfs.clone().to_vec());
+ //           println!("pos: {:?}", m.positions.clone().to_vec());
+ //       }
+ //       println!("---");
+
         let mut merger = MergerWithoutDuplicates::new(to_merge);
         while let Some(doc) = merger.advance() {
             let (tf, positions) = merger.catch_up();
-            println!("DOC: {}, TF: {}, MERGED POS: {:?}", doc, tf, positions);
+//            println!("DOC: {}, TF: {}, MERGED POS: {:?}", doc, tf, positions);
             res.docs.push(doc);
             res.tfs.push(tf);
             res.positions.extend_from_slice(&positions);
         }
-        println!("MERGED: docs: {:?}", &res.docs);
-        println!("MERGED: tfs: {:?}", &res.tfs);
-        println!("MERGED: pos: {:?}", &res.positions);
-        println!("---");
+//        println!("MERGED: docs: {:?}", &res.docs);
+//        println!("MERGED: tfs: {:?}", &res.tfs);
+//        println!("MERGED: pos: {:?}", &res.positions);
+//        println!("---\n\n");
 
         res
     }
