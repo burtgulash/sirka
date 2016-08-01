@@ -27,13 +27,13 @@ pub struct SimpleCursor<DS, TS, PS> {
 
 impl<DS: Sequence, TS: Sequence, PS: Sequence> SimpleCursor<DS, TS, PS> {
     pub fn new(mut postings: Postings<DS, TS, PS>, doc_ptr: usize, index: usize, term_id: TermId) -> Self {
-        let first_doc = postings.docs.current().unwrap();
+        let first_doc = postings.docs.advance().unwrap();
         let first_tf = postings.tfs.current().unwrap();
 
         SimpleCursor {
             postings: postings,
             ptr: Postings {
-                docs: doc_ptr,
+                docs: doc_ptr + 1,
                 tfs: doc_ptr,
                 positions: 0,
             },
@@ -57,11 +57,18 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
 
     fn advance(&mut self) -> Option<DocId> {
         self.advanced = true;
+        println!("ADVANCIND");
+        self.ptr.docs += 1;
         if let Some(doc_id) = self.postings.docs.advance() {
-            self.ptr.docs += 1;
+            let current = self.current;
             self.current = Some(doc_id);
-            Some(doc_id)
+            current
+        } else if self.current.is_some() {
+            let current = self.current;
+            self.current = None;
+            current
         } else {
+            self.advanced = false;
             None
         }
     }
@@ -83,8 +90,8 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
 
         println!("DOCPTR: {}, TFPTR: {}", self.ptr.docs, self.ptr.tfs);
         // Align tfs to docs
-        self.postings.tfs.move_n(self.ptr.docs - 1 - self.ptr.tfs).unwrap();
-        self.ptr.tfs = self.ptr.docs - 1;
+        self.postings.tfs.move_n(self.ptr.docs - 2 - self.ptr.tfs).unwrap();
+        self.ptr.tfs = self.ptr.docs - 2;
 
         let tf = self.postings.tfs.advance().unwrap();
         self.ptr.tfs += 1;
@@ -115,8 +122,8 @@ mod tests {
     fn test_cursor() {
         let ps = Postings {
             docs: vec![3,5],
-            tfs:  vec![0, 4, 7],
-            positions: vec![0,0,0,0,1,1,1],
+            tfs:  vec![0, 3, 8],
+            positions: vec![3,3,3,5,5,5,5,5],
         };
         let seqs = Postings {
             docs: (&ps.docs).to_sequence(),
