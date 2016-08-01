@@ -222,10 +222,10 @@ impl<S: Sequence> Postings<S, S, S> {
             }
             ADD!();
         }
-        //println!("MERGED: docs: {:?}", &res.docs);
-        //println!("MERGED: tfs: {:?}", &res.tfs);
-        //println!("MERGED: pos: {:?}", &res.positions);
-        //println!("---\n\n");
+        // println!("MERGED: docs: {:?}", &res.docs);
+        // println!("MERGED: tfs: {:?}", &res.tfs);
+        // println!("MERGED: pos: {:?}", &res.positions);
+        // println!("---\n\n");
 
         res
     }
@@ -252,10 +252,10 @@ impl<S: Sequence> Postings<S, S, S> {
             res.docs.push(doc);
             res.tfs.push(tf);
         }
-//        println!("MERGED: docs: {:?}", &res.docs);
-//        println!("MERGED: tfs: {:?}", &res.tfs);
-//        println!("MERGED: pos: {:?}", &res.positions);
-//        println!("---\n\n");
+        //println!("MERGED: docs: {:?}", &res.docs);
+        //println!("MERGED: tfs: {:?}", &res.tfs);
+        //println!("MERGED: pos: {:?}", &res.positions);
+        //println!("---\n\n");
 
         res
     }

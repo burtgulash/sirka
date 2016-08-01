@@ -12,14 +12,15 @@ use postings::{VecPostings,Postings,PostingsStore,Sequence,SequenceStorage,Seque
 
 
 fn delta_encode(xs: &[DocId]) -> Vec<DocId> {
+    let mut v = Vec::new();
     if xs.len() < 1 {
-        let mut v = Vec::new();
         v.extend_from_slice(xs);
-        v
     } else {
         let tail = xs[1..].iter();
-        xs.iter().zip(tail).map(|(a, b)| b - a).collect()
+        v.push(xs[0]);
+        v.extend(xs.iter().zip(tail).map(|(a, b)| b - a));
     }
+    v
 }
 
 #[derive(Clone)]
@@ -281,7 +282,7 @@ impl<'n> TrieNode<'n> {
                         });
                     }
                 }
-                Postings::merge_without_duplicates_unrolled(&postings_to_merge[..])
+                Postings::merge_without_duplicates(&postings_to_merge[..])
             };
             self.borrow_mut().prefix_postings = Some(merged_postings);
         }
@@ -313,6 +314,7 @@ impl<'n> TrieNode<'n> {
                 for ptr in &mut $postings.tfs {
                     let tf = *ptr;
                     let positions = delta_encode(&$postings.positions[cum as usize .. (cum + tf) as usize]);
+                    // println!("{:?}, POSITIONS WR: {:?}, CUM: {}, TF:{}", &$postings.positions, positions, cum, tf);
                     let _ = enc.positions.write_sequence((&positions).to_sequence()).unwrap();
 
                     *ptr = cum;
