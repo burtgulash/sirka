@@ -281,7 +281,7 @@ impl<'n> TrieNode<'n> {
                         });
                     }
                 }
-                Postings::merge_without_duplicates(&postings_to_merge[..])
+                Postings::merge_without_duplicates_unrolled(&postings_to_merge[..])
             };
             self.borrow_mut().prefix_postings = Some(merged_postings);
         }

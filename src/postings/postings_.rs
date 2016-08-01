@@ -173,6 +173,63 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
 }
 
 impl<S: Sequence> Postings<S, S, S> {
+    pub fn merge_without_duplicates_unrolled(to_merge: &[Self]) -> VecPostings {
+        let mut res = VecPostings {
+            docs: Vec::new(),
+            tfs: Vec::new(),
+            positions: Vec::new(),
+        };
+        let mut frontier = create_heap(to_merge);
+        let mut ptr = frontier.pop().unwrap();
+        let mut current_doc = ptr.current;
+        let mut previous_doc = current_doc;
+        let mut positions_buffer = Vec::new();
+
+        macro_rules! ADD {
+            () => {
+                assert!(positions_buffer.len() > 0);
+                positions_buffer.sort();
+                let unique_positions = keep_unique(&positions_buffer);
+                let tf = unique_positions.len() as DocId;
+                positions_buffer.clear();
+
+                res.docs.push(previous_doc);
+                res.tfs.push(tf);
+                res.positions.extend_from_slice(&unique_positions[..]);
+            }
+        }
+
+        'merge: loop {
+            loop {
+                if ptr.current == current_doc {
+                    let tf = ptr.cursor.catch_up(&mut positions_buffer);
+                    if let Some(next_doc) = ptr.cursor.advance() {
+                        ptr.current = next_doc;
+                        frontier.push(ptr);
+                    }
+                } else {
+                    previous_doc = current_doc;
+                    current_doc = ptr.current;
+                    break;
+                }
+
+                if let Some(next_ptr) = frontier.pop() {
+                    ptr = next_ptr;
+                } else {
+                    ADD!();
+                    break 'merge;
+                }
+            }
+            ADD!();
+        }
+        //println!("MERGED: docs: {:?}", &res.docs);
+        //println!("MERGED: tfs: {:?}", &res.tfs);
+        //println!("MERGED: pos: {:?}", &res.positions);
+        //println!("---\n\n");
+
+        res
+    }
+
     pub fn merge_without_duplicates(to_merge: &[Self]) -> VecPostings {
         let mut res = VecPostings {
             docs: Vec::new(),
