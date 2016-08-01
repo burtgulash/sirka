@@ -322,9 +322,11 @@ impl<'n> TrieNode<'n> {
                 }
 
                 let _ = enc.docs.write_sequence((&$postings.docs).to_sequence()).unwrap();
+                let mut seq = Vec::with_capacity($postings.tfs.len());
                 for cumtf in &$postings.tfs {
-                    enc.tfs.write(*last_tf + cumtf).unwrap();
+                    seq.push(*last_tf + cumtf);
                 }
+                let _ = enc.tfs.write_sequence((&seq).to_sequence()).unwrap();
                 $postings.tfs.push(cum);
                 // println!("NEW TFS: {:?}", &$postings.tfs);
 

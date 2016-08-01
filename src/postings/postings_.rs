@@ -179,6 +179,15 @@ impl<S: Sequence> Postings<S, S, S> {
             tfs: Vec::new(),
             positions: Vec::new(),
         };
+
+       //println!("TO MERGE:");
+       //for m in to_merge.iter() {
+       //    println!("DOCS: {:?}", m.docs.clone().to_vec());
+       //    println!("tfs: {:?}", m.tfs.clone().to_vec());
+       //    println!("pos: {:?}", m.positions.clone().to_vec());
+       //}
+       //println!("---");
+
         let mut frontier = create_heap(to_merge);
         let mut ptr = frontier.pop().unwrap();
         let mut current_doc = ptr.current;
@@ -193,7 +202,7 @@ impl<S: Sequence> Postings<S, S, S> {
                 let tf = unique_positions.len() as DocId;
                 positions_buffer.clear();
 
-                res.docs.push(previous_doc);
+                res.docs.push(current_doc);
                 res.tfs.push(tf);
                 res.positions.extend_from_slice(&unique_positions[..]);
             }
@@ -208,7 +217,7 @@ impl<S: Sequence> Postings<S, S, S> {
                         frontier.push(ptr);
                     }
                 } else {
-                    previous_doc = current_doc;
+                    ADD!();
                     current_doc = ptr.current;
                     break;
                 }
@@ -220,12 +229,11 @@ impl<S: Sequence> Postings<S, S, S> {
                     break 'merge;
                 }
             }
-            ADD!();
         }
-        // println!("MERGED: docs: {:?}", &res.docs);
-        // println!("MERGED: tfs: {:?}", &res.tfs);
-        // println!("MERGED: pos: {:?}", &res.positions);
-        // println!("---\n\n");
+         // println!("MERGED: docs: {:?}", &res.docs);
+         // println!("MERGED: tfs: {:?}", &res.tfs);
+         // println!("MERGED: pos: {:?}", &res.positions);
+         // println!("---\n\n");
 
         res
     }
@@ -237,13 +245,13 @@ impl<S: Sequence> Postings<S, S, S> {
             positions: Vec::new(),
         };
 
-//       println!("TO MERGE:");
-//       for m in to_merge.iter() {
-//           println!("DOCS: {:?}", m.docs.clone().to_vec());
-//           println!("tfs: {:?}", m.tfs.clone().to_vec());
-//           println!("pos: {:?}", m.positions.clone().to_vec());
-//       }
-//       println!("---");
+       //println!("TO MERGE:");
+       //for m in to_merge.iter() {
+       //    println!("DOCS: {:?}", m.docs.clone().to_vec());
+       //    println!("tfs: {:?}", m.tfs.clone().to_vec());
+       //    println!("pos: {:?}", m.positions.clone().to_vec());
+       //}
+       //println!("---");
 
         let mut merger = MergerWithoutDuplicates::new(to_merge);
         while let Some(doc) = merger.advance() {
@@ -252,10 +260,10 @@ impl<S: Sequence> Postings<S, S, S> {
             res.docs.push(doc);
             res.tfs.push(tf);
         }
-        //println!("MERGED: docs: {:?}", &res.docs);
-        //println!("MERGED: tfs: {:?}", &res.tfs);
-        //println!("MERGED: pos: {:?}", &res.positions);
-        //println!("---\n\n");
+       // println!("MERGED: docs: {:?}", &res.docs);
+       // println!("MERGED: tfs: {:?}", &res.tfs);
+       // println!("MERGED: pos: {:?}", &res.positions);
+       // println!("---\n\n");
 
         res
     }
