@@ -189,6 +189,7 @@ impl<S: Sequence> Postings<S, S, S> {
         let mut merger = MergerWithoutDuplicates::new(&cum_encoded);
         while let Some(_) = merger.advance() {
             let (doc, tf, positions) = merger.catch_up();
+            println!("MERGED POS: {:?}", positions);
             res.docs.push(doc);
             res.tfs.push(tf);
             res.positions.extend_from_slice(&positions);

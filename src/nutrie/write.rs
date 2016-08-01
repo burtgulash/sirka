@@ -12,8 +12,14 @@ use postings::{VecPostings,Postings,PostingsStore,Sequence,SequenceStorage,Seque
 
 
 fn delta_encode(xs: &[DocId]) -> Vec<DocId> {
-    let tail = xs[1..].iter();
-    xs.iter().zip(tail).map(|(a, b)| b - a).collect::<Vec<_>>()
+    if xs.len() < 1 {
+        let mut v = Vec::new();
+        v.extend_from_slice(xs);
+        v
+    } else {
+        let tail = xs[1..].iter();
+        xs.iter().zip(tail).map(|(a, b)| b - a).collect()
+    }
 }
 
 #[derive(Clone)]
@@ -308,6 +314,7 @@ impl<'n> TrieNode<'n> {
             ($postings:expr) => {
                 assert!(is_sorted_ascending(&$postings.docs)); // TODO disable this for performance?
 
+                // println!("OLD TFS: {:?}", &$postings.tfs);
                 let mut cum = 0;
                 for ptr in &mut $postings.tfs {
                     let tf = *ptr;
@@ -323,6 +330,7 @@ impl<'n> TrieNode<'n> {
                     enc.tfs.write(*last_tf + cumtf).unwrap();
                 }
                 $postings.tfs.push(cum);
+                // println!("NEW TFS: {:?}", &$postings.tfs);
 
                 *postings_ptr += $postings.docs.len() as DocId;
                 *last_tf += cum;

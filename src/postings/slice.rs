@@ -55,22 +55,14 @@ impl<W: io::Write> SequenceEncoder for PlainEncoder<W> {
 #[derive(Clone)]
 pub struct SliceSequence<'a> {
     seq: &'a [DocId],
-    position: usize,
+    next_position: usize,
 }
 
 impl<'a> SliceSequence<'a> {
     pub fn new(seq: &'a [DocId]) -> Self {
         SliceSequence {
+            next_position: 1,
             seq: seq,
-            position: 0,
-        }
-    }
-
-    fn get_at(&self, at: usize) -> Option<DocId> {
-        if at < self.seq.len() {
-            Some(self.seq[at])
-        } else {
-            None
         }
     }
 }
@@ -82,25 +74,30 @@ impl<'a> Sequence for SliceSequence<'a> {
         sub
     }
 
+    fn current_unchecked(&self) -> DocId {
+        self.seq[self.next_position - 1]
+    }
+
     fn current(&self) -> Option<DocId> {
-        if self.position < self.seq.len() {
-            Some(self.seq[self.position])
+        if self.next_position <= self.seq.len() {
+            Some(self.current_unchecked())
         } else {
             None
         }
     }
 
-    fn next(&mut self) -> Option<DocId> {
-        self.position += 1;
-        self.current()
+    fn advance(&mut self) -> Option<DocId> {
+        let cur = self.current();
+        self.next_position += 1;
+        cur
     }
 
     fn remains(&self) -> usize {
-        self.seq.len() - self.position
+        self.seq.len() + 1 - self.next_position
     }
 
     fn move_n(&mut self, n: usize) -> Option<DocId> {
-        self.position += n;
+        self.next_position += n;
         self.current()
     }
 }
