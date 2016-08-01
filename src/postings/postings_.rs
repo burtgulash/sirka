@@ -68,11 +68,10 @@ struct MergerWithoutDuplicates<A: Sequence, B: Sequence, C: Sequence> {
     frontier: BinaryHeap<FrontierPointer<A, B, C>>,
     current_ptr: Option<FrontierPointer<A,B,C>>,
     current_doc: DocId,
-    current_positions: Vec<DocId>,
+    current_positions: Option<Vec<DocId>>,
     current_tf: DocId,
     size: usize,
     processed: usize,
-    finished: bool,
 }
 
 impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
@@ -87,18 +86,17 @@ impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
             frontier: heap,
             current_ptr: Some(first_ptr),
             current_doc: first_doc,
-            current_positions: Vec::new(),
+            current_positions: None,
             current_tf: 1137,
             size: size,
             processed: 1,
-            finished: false,
         }
     }
 }
 
 impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWithoutDuplicates<A, B, C> {
     fn advance(&mut self) -> Option<DocId> {
-        if self.finished {
+        if self.current_ptr.is_none() {
             return None;
         }
         let mut positions_buffer = Vec::new();
@@ -132,7 +130,6 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
             if let Some(mut next_ptr) = self.frontier.pop() {
                 ptr = next_ptr;
             } else {
-                self.finished = true;
                 self.current_ptr = None;
                 break;
             }
@@ -144,7 +141,7 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
         positions_buffer.sort();
         let unique_positions = keep_unique(&positions_buffer);
         self.current_tf = unique_positions.len() as DocId;
-        self.current_positions = unique_positions;
+        self.current_positions = Some(unique_positions);
 
         Some(current_doc)
     }
@@ -161,7 +158,7 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
     }
 
     fn catch_up(&mut self) -> (DocId, Vec<DocId>) {
-        let positions = mem::replace(&mut self.current_positions, Vec::new());
+        let positions = self.current_positions.take().unwrap();
         (self.current_tf, positions)
     }
 
@@ -182,13 +179,13 @@ impl<S: Sequence> Postings<S, S, S> {
             positions: Vec::new(),
         };
 
- //       println!("TO MERGE:");
- //       for m in to_merge.iter() {
- //           println!("DOCS: {:?}", m.docs.clone().to_vec());
- //           println!("tfs: {:?}", m.tfs.clone().to_vec());
- //           println!("pos: {:?}", m.positions.clone().to_vec());
- //       }
- //       println!("---");
+//       println!("TO MERGE:");
+//       for m in to_merge.iter() {
+//           println!("DOCS: {:?}", m.docs.clone().to_vec());
+//           println!("tfs: {:?}", m.tfs.clone().to_vec());
+//           println!("pos: {:?}", m.positions.clone().to_vec());
+//       }
+//       println!("---");
 
         let mut merger = MergerWithoutDuplicates::new(to_merge);
         while let Some(doc) = merger.advance() {
