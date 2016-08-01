@@ -110,8 +110,7 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
             //println!("LOOPING");
             if ptr.current == current_doc {
                 self.processed += 1;
-                let (tf, positions) = ptr.cursor.catch_up();
-                positions_buffer.extend_from_slice(&positions[..]);
+                let tf = ptr.cursor.catch_up(&mut positions_buffer);
 
                 if let Some(next_doc) = ptr.cursor.advance() {
                     ptr.current = next_doc;
@@ -157,9 +156,11 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
         None
     }
 
-    fn catch_up(&mut self) -> (DocId, Vec<DocId>) {
-        let positions = self.current_positions.take().unwrap();
-        (self.current_tf, positions)
+    fn catch_up(&mut self, positions_dst: &mut Vec<DocId>) -> DocId {
+        for position in self.current_positions.take().unwrap() {
+            positions_dst.push(position);
+        }
+        self.current_tf
     }
 
     fn current(&self) -> Option<DocId> {
@@ -189,11 +190,10 @@ impl<S: Sequence> Postings<S, S, S> {
 
         let mut merger = MergerWithoutDuplicates::new(to_merge);
         while let Some(doc) = merger.advance() {
-            let (tf, positions) = merger.catch_up();
+            let tf = merger.catch_up(&mut res.positions);
 //            println!("DOC: {}, TF: {}, MERGED POS: {:?}", doc, tf, positions);
             res.docs.push(doc);
             res.tfs.push(tf);
-            res.positions.extend_from_slice(&positions);
         }
 //        println!("MERGED: docs: {:?}", &res.docs);
 //        println!("MERGED: tfs: {:?}", &res.tfs);

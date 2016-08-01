@@ -8,7 +8,7 @@ pub trait PostingsCursor<DS, TS, PS>
 {
     fn advance(&mut self) -> Option<DocId>;
     fn advance_to(&mut self, doc_id: DocId) -> Option<DocId>;
-    fn catch_up(&mut self) -> (DocId, Vec<DocId>);
+    fn catch_up(&mut self, positions_dst: &mut Vec<DocId>) -> DocId;
     fn current(&self) -> Option<DocId>;
     fn remains(&self) -> usize;
 }
@@ -58,7 +58,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
         x
     }
 
-    fn catch_up(&mut self) -> (DocId, Vec<DocId>) {
+    fn catch_up(&mut self, positions_dst: &mut Vec<DocId>) -> DocId {
         assert!(self.advanced);
         self.advanced = false;
 
@@ -69,9 +69,12 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
         self.ahead = 0;
 
         let tf = next_tf - start_tf;
-        let positions = self.postings.positions.subsequence(start_tf as usize, tf as usize).to_vec();
+        let mut positions = self.postings.positions.subsequence(start_tf as usize, tf as usize);
+        while let Some(position) = positions.next() {
+            positions_dst.push(position);
+        }
 
-        (tf, positions)
+        tf
     }
 }
 
