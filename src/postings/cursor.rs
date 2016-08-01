@@ -26,17 +26,18 @@ pub struct SimpleCursor<DS, TS, PS> {
 
 impl<DS: Sequence, TS: Sequence, PS: Sequence> SimpleCursor<DS, TS, PS> {
     pub fn new(mut postings: Postings<DS, TS, PS>, doc_ptr: usize, index: usize, term_id: TermId) -> Self {
-        let first_doc = postings.docs.next().unwrap();
+        let first_doc = postings.docs.current().unwrap();
+        let first_tf = postings.tfs.current().unwrap();
 
         SimpleCursor {
             postings: postings,
             ptr: Postings {
-                docs: doc_ptr + 1,
+                docs: doc_ptr,
                 tfs: doc_ptr,
                 positions: 0,
             },
             current: first_doc,
-            current_tf: 1337,
+            current_tf: first_tf,
             i: index,
             term_id: term_id,
         }
@@ -53,12 +54,12 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
     }
 
     fn advance(&mut self) -> Option<DocId> {
-        if let Some(next_doc_id) = self.postings.docs.next() {
+        if let Some(doc_id) = self.postings.docs.current() {
+            let _ = self.postings.docs.next();
             self.ptr.docs += 1;
-            self.current = next_doc_id;
+            self.current = doc_id;
 
-            // assert_eq!(self.postings.docs.next_position() - 1, self.ptr.docs);
-            Some(next_doc_id)
+            Some(doc_id)
         } else {
             None
         }
@@ -77,10 +78,16 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
     }
 
     fn catch_up(&mut self) -> (DocId, DocId, Vec<DocId>) {
+        println!("MOVE BY: {} - {}", self.ptr.docs, self.ptr.tfs);
+
         // Align tfs to docs
         self.postings.tfs.move_n(self.ptr.docs - self.ptr.tfs);
         let tf = self.postings.tfs.current().unwrap();
+        println!("CATCH UP TF: {}", tf);
         self.ptr.tfs = self.ptr.docs;
+
+        let mut pcpy = self.postings.positions.clone();
+        println!("POSITIONS: {:?}, {} - {}", pcpy.to_vec(), tf, self.current_tf);
 
         // '-1' because tfs sequence has one more element from the sequence
         // of next term in sequence
@@ -94,7 +101,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
 
         // TODO assign new subsequence to self.postings.positions to avoid skipping over the same
         // elements in next round
-        let positions = self.postings.positions.subsequence(tf as usize, self.current_tf as usize).collect();
+        let positions = self.postings.positions.subsequence(tf as usize, self.current_tf as usize).to_vec();
 
         (self.current, self.current_tf, positions)
     }

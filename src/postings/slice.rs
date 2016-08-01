@@ -46,7 +46,7 @@ impl<W: io::Write> SequenceEncoder for PlainEncoder<W> {
     }
 
     fn write_sequence<S: Sequence>(&mut self, mut seq: S) -> io::Result<usize> {
-        let xs = seq.collect();
+        let xs = seq.to_vec();
         self.writer.write(typed_to_bytes(&xs))
     }
 }

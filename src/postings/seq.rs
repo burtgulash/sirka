@@ -32,9 +32,10 @@ pub trait Sequence: Clone {
         skipped
     }
 
-    fn collect(&mut self) -> Vec<DocId> {
+    fn to_vec(&mut self) -> Vec<DocId> {
         let mut res = Vec::with_capacity(self.remains());
-        while let Some(x) = self.next() {
+        while let Some(x) = self.current() {
+            let _ = self.next();
             res.push(x);
         }
         res

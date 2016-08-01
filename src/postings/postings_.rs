@@ -169,6 +169,10 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
 impl<S: Sequence> Postings<S, S, S> {
     pub fn merge_without_duplicates(to_merge: &[Self]) -> VecPostings {
         let cum_encoded: Vec<_> = to_merge.iter().map(|p| {
+            assert_eq!(p.tfs.remains() - 1, p.docs.remains());
+            println!("DOCS: {:?}", p.docs.clone().to_vec());
+            println!("tfs: {:?}", p.tfs.clone().to_vec());
+            println!("-----------");
             Postings {
                 // TODO clones necessary?
                 docs: p.docs.clone(),
