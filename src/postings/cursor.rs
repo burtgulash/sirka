@@ -16,10 +16,8 @@ pub trait PostingsCursor<DS, TS, PS>
 
 pub struct SimpleCursor<DS, TS, PS> {
     postings: Postings<DS, TS, PS>,
-    ptr: Postings<usize, usize, usize>,
-    current: Option<DocId>,
-    current_tf: DocId,
     advanced: bool,
+    ahead: usize,
 
     i: usize,
     term_id: TermId,
@@ -27,60 +25,35 @@ pub struct SimpleCursor<DS, TS, PS> {
 
 impl<DS: Sequence, TS: Sequence, PS: Sequence> SimpleCursor<DS, TS, PS> {
     pub fn new(mut postings: Postings<DS, TS, PS>, doc_ptr: usize, index: usize, term_id: TermId) -> Self {
-        let first_doc = postings.docs.advance().unwrap();
-        let first_tf = postings.tfs.current().unwrap();
-
         SimpleCursor {
             postings: postings,
-            ptr: Postings {
-                docs: doc_ptr + 1,
-                tfs: doc_ptr,
-                positions: 0,
-            },
-            current: Some(first_doc),
-            current_tf: first_tf,
             i: index,
             term_id: term_id,
             advanced: true,
+            ahead: 0,
         }
     }
 }
 
 impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for SimpleCursor<DS, TS, PS> {
     fn remains(&self) -> usize {
-        self.postings.docs.remains() + 1
+        self.postings.docs.remains()
     }
 
     fn current(&self) -> Option<DocId> {
-        self.current
+        Some(self.postings.docs.current())
     }
 
     fn advance(&mut self) -> Option<DocId> {
         self.advanced = true;
-        self.ptr.docs += 1;
-        if let Some(doc_id) = self.postings.docs.advance() {
-            let current = self.current;
-            self.current = Some(doc_id);
-            current
-        } else if self.current.is_some() {
-            let current = self.current;
-            self.current = None;
-            current
-        } else {
-            self.advanced = false;
-            None
-        }
+        self.ahead += 1;
+        self.postings.docs.next() 
     }
 
     fn advance_to(&mut self, align_to: DocId) -> Option<DocId> {
-        self.ptr.docs += self.postings.docs.move_to(align_to);
-        if let Some(doc_id) = self.postings.docs.current() {
-            self.current = Some(doc_id);
-            assert!(doc_id >= align_to);
-            Some(doc_id)
-        } else {
-            None
-        }
+        let (skipped, x) = self.postings.docs.skip_to(align_to);
+        self.ahead += skipped;
+        x
     }
 
     fn catch_up(&mut self) -> (DocId, Vec<DocId>) {
@@ -89,23 +62,15 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
 
         //println!("DOCPTR: {}, TFPTR: {}", self.ptr.docs, self.ptr.tfs);
         // Align tfs to docs
-        self.postings.tfs.move_n(self.ptr.docs - 2 - self.ptr.tfs).unwrap();
-        self.ptr.tfs = self.ptr.docs - 2;
+        let start_tf = self.postings.tfs.skip_n(self.ahead).unwrap();
+        let next_tf = self.postings.tfs.next().unwrap();
+        self.ahead = 0;
 
-        let tf = self.postings.tfs.advance().unwrap();
-        self.ptr.tfs += 1;
+        let tf = next_tf - start_tf;
+        println!("TF: {}", tf);
+        let positions = self.postings.positions.subsequence(start_tf as usize, next_tf as usize).to_vec();
 
-        let next_tf = self.postings.tfs.current().unwrap();
-        self.current_tf = next_tf - tf;
-
-
-        // TODO assign new subsequence to self.postings.positions to avoid skipping over the same
-        // elements in next round
-        let positions = self.postings.positions.subsequence(tf as usize, self.current_tf as usize).to_vec();
-        let nn = positions.clone();
-        // println!("CATCH UP: {}-{}, {:?}", tf, next_tf - tf, nn.to_vec());
-
-        (self.current_tf, positions)
+        (tf, positions)
     }
 }
 

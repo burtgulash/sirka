@@ -4,37 +4,36 @@ use types::*;
 pub trait Sequence: Clone {
     fn remains(&self) -> usize;
     fn subsequence(&self, start: usize, len: usize) -> Self;
-    fn current(&self) -> Option<DocId>;
-    fn current_unchecked(&self) -> DocId;
-    fn advance(&mut self) -> Option<DocId>;
+    fn next_position(&self) -> usize;
+    fn current(&self) -> DocId;
+    fn next(&mut self) -> Option<DocId>;
+    //fn rewind(&mut self) -> DocId;
 
-    fn move_n(&mut self, mut n: usize) -> Option<DocId> {
-        while n > 0 {
-            n -= 1;
-            self.advance();
+    fn skip_n(&mut self, mut n: usize) -> Option<DocId> {
+        if n == 0 {
+            return Some(self.current());
         }
-        self.current()
+        while n > 1 {
+            n -= 1;
+            self.next();
+        }
+        self.next()
     }
 
-    fn move_to(&mut self, doc_id: DocId) -> usize {
-        if self.current_unchecked() == doc_id {
-            return 0;
-        }
-        self.advance();
-        let mut skipped = 1;
-
-        while let Some(x) = self.advance() {
+    fn skip_to(&mut self, doc_id: DocId) -> (usize, Option<DocId>) {
+        let mut skipped = 0;
+        while let Some(x) = self.next() {
             skipped += 1;
             if x >= doc_id {
-                return skipped
+                return (skipped, Some(x))
             }
         }
-        skipped
+        (skipped, None)
     }
 
     fn to_vec(&mut self) -> Vec<DocId> {
         let mut res = Vec::with_capacity(self.remains());
-        while let Some(x) = self.advance() {
+        while let Some(x) = self.next() {
             res.push(x);
         }
         res

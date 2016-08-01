@@ -146,7 +146,7 @@ fn search_daat<DS, TS, PS, C>(mut term_cursors: Vec<C>) -> Vec<DocId>
 {
     let mut result = Vec::new();
 
-    let mut current_doc_id = term_cursors[0].current();
+    let mut current_doc_id = term_cursors[0].current().unwrap();
     'intersect: loop {
         'align: loop {
             for cur in &mut term_cursors {
@@ -163,8 +163,8 @@ fn search_daat<DS, TS, PS, C>(mut term_cursors: Vec<C>) -> Vec<DocId>
         }
 
         for cur in &mut term_cursors {
-            println!("found in doc: {}", cur.current());
-            result.push(cur.current());
+            println!("found in doc: {}", cur.current().unwrap());
+            result.push(cur.current().unwrap());
 
             let evidence: DocId = {
                 let (tf, _) = cur.catch_up();
