@@ -68,9 +68,9 @@ fn create_heap<A: Sequence, B: Sequence, C: Sequence>(to_merge: &[Postings<A, B,
 struct MergerWithoutDuplicates<A, B, C> {
     frontier: BinaryHeap<SimpleCursor<A, B, C>>,
     current_cursor: Option<SimpleCursor<A, B, C>>,
-    current_doc: Option<DocId>,
-    current_positions: Option<Vec<DocId>>,
-    current_tf: Option<DocId>,
+    current_doc: DocId,
+    current_positions: Vec<DocId>,
+    current_tf: DocId,
     size: usize,
     processed: usize,
     //phantom: PhantomData<&'a SliceSequence<'a>>,
@@ -82,14 +82,17 @@ impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
         println!("merged SIZE: {}", size);
 
         let mut heap = create_heap(to_merge);
-        let first_cursor = heap.pop();
+        let mut first_cursor = heap.pop();
+        let _ = first_cursor.advance().unwrap();
+        let (doc, tf, positions) = first_cursor.catch_up();
+
 
         MergerWithoutDuplicates {
             frontier: heap,
             current_cursor: first_cursor,
-            current_doc: None,
-            current_positions: None,
-            current_tf: None,
+            current_doc: doc,
+            current_positions: tf,
+            current_tf: positions,
             size: size,
             processed: 1,
         }
@@ -102,9 +105,10 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
             return None;
         }
 
-        let mut current_cursor = self.current_cursor.take().unwrap();
-        let current_doc = current_cursor.current();
         let mut positions_buffer = Vec::new();
+        let mut current_cursor = self.current_cursor;
+        let current_doc = self.current_doc;
+        asser_eq!(current_doc, self.current_cursor.current());
 
         loop {
             println!("CACHING UP {}", current_doc);
@@ -129,9 +133,9 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
 
         positions_buffer.sort();
         let unique_positions = keep_unique(&positions_buffer);
-        self.current_tf = Some(unique_positions.len() as DocId);
-        self.current_positions = Some(unique_positions);
-        self.current_doc = Some(current_doc);
+        self.current_tf = unique_positions.len() as DocId;
+        self.current_positions = unique_positions;
+        self.current_doc = current_doc;
         self.current_doc
     }
 
