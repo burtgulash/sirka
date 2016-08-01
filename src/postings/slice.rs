@@ -78,35 +78,37 @@ impl<'a> SliceSequence<'a> {
 impl<'a> Sequence for SliceSequence<'a> {
     fn subsequence(&self, start: usize, len: usize) -> SliceSequence<'a> {
         let mut sub = SliceSequence::new(&self.seq[..start+len]);
-        sub.skip_n(start);
+        sub.move_n(start);
         sub
+    }
+
+    fn current(&self) -> Option<DocId> {
+        if self.position < self.seq.len() {
+            Some(self.seq[self.position])
+        } else {
+            None
+        }
     }
 
     fn next(&mut self) -> Option<DocId> {
         self.position += 1;
-        self.get_at(self.position - 1)
+        self.current()
     }
 
     fn remains(&self) -> usize {
         self.seq.len() - self.position
     }
 
-    fn skip_n(&mut self, n: usize) -> Option<DocId> {
-        if n == 0 {
-            return self.get_at(self.position - 1);
-        }
-        self.position += n - 1;
-        self.next()
-    }
-
-    fn next_position(&self) -> usize {
-        self.position + 1
+    fn move_n(&mut self, n: usize) -> Option<DocId> {
+        self.position += n;
+        self.current()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use types::{Sequence,SequenceStorage};
+    use types::*;
+    use postings::{Sequence,SequenceStorage};
 
     #[test]
     fn test_sequence() {
@@ -115,19 +117,19 @@ mod tests {
         while let Some(doc) = seq.next() {
             println!("Next doc: {}", doc);
         }
-        println!("CUUU");
+        println!("---");
     }
 
     #[test]
     fn test_slice_sequence_skip() {
         let docs = vec![5,7,9,11,15,17,50,90];
         let mut seq = (&docs[..]).to_sequence();
-        assert_eq!(seq.next().unwrap(), 5);
-        assert_eq!(seq.skip_to(9).unwrap(), 9);
-        assert_eq!(seq.skip_to(12).unwrap(), 15);
-        assert_eq!(seq.skip_to(17).unwrap(), 17);
-        assert_eq!(seq.skip_to(30).unwrap(), 50);
-        assert_eq!(seq.skip_to(60).unwrap(), 90);
+        assert_eq!(seq.current().unwrap(), 5);
+        assert_eq!(seq.move_to(9), 2);
+        assert_eq!(seq.move_to(12), 2);
+        assert_eq!(seq.move_to(17), 1);
+        assert_eq!(seq.move_to(30), 1);
+        assert_eq!(seq.move_to(60), 1);
     }
 
     #[test]
@@ -135,9 +137,13 @@ mod tests {
         let docs = vec![5,7,9,11,15,17,50,90, 120, 2000, 2001];
         let mut seq = (&docs[..]).to_sequence();
         let mut subseq = seq.subsequence(3, 5);
-        assert_eq!(seq.skip_to(11).unwrap(), 11);
-        assert_eq!(seq.skip_to(17).unwrap(), 17);
-        assert_eq!(seq.skip_to(30).unwrap(), 50);
-        assert_eq!(seq.skip_to(60).unwrap(), 90);
+
+        assert_eq!(seq.current().unwrap(), 5);
+
+        assert_eq!(subseq.current().unwrap(), 11);
+        assert_eq!(subseq.move_to(11), 0);
+        assert_eq!(subseq.move_to(17), 2);
+        assert_eq!(subseq.move_to(30), 1);
+        assert_eq!(subseq.move_to(60), 1);
     }
 }

@@ -7,9 +7,13 @@ use std::ops::Deref;
 use types::*;
 use util::*;
 use nutrie::TrieNodeHeader;
-use postings::encoding::{DeltaEncoder,CumEncoder};
 use postings::{VecPostings,Postings,PostingsStore,Sequence,SequenceStorage,SequenceEncoder};
 
+
+// fn delta_encode(xs: &[DocId]) -> Vec<DocId> {
+//     let tail = xs[1..].iter();
+//     xs.iter().zip(tail).map(|a, b| b - a).collect()
+// }
 
 #[derive(Clone)]
 pub struct WrittenTerm<'a> {
@@ -128,7 +132,8 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
 
     // Don't forget to write last_tf so that differences tfs[i + 1] - tfs[i] work for all doc
     // positions
-    let _ = enc.tfs.write(last_tf).unwrap();
+    // let _ = enc.tfs.write(last_tf).unwrap();
+    // TODO already written. remove this
 
 
     for t in terms.iter() {
@@ -296,30 +301,39 @@ impl<'n> TrieNode<'n> {
             ($postings:expr) => {
                 assert!(is_sorted_ascending(&$postings.docs)); // TODO disable this for performance?
 
-                let docs = (&$postings.docs).to_sequence();
-                let tfs = CumEncoder::new(*last_tf, (&$postings.tfs).to_sequence());
-
-                let _ = enc.tfs.write_sequence(tfs).unwrap();
-                let _ = enc.docs.write_sequence(docs).unwrap();
-
-                let mut start_tf = 0;
-                let mut tfs2 = CumEncoder::new(start_tf, (&$postings.tfs).to_sequence());
-                while let Some(cum_tf) = tfs2.next() {
-                    let positions = DeltaEncoder::new((&$postings.positions[start_tf as usize .. cum_tf as usize]).to_sequence());
-                    let _ = enc.positions.write_sequence(positions).unwrap();
-                    start_tf = cum_tf;
+                let mut cum = *last_tf;
+                for ptr in &mut $postings.tfs {
+                    let tf = *ptr;
+                    *ptr = cum;
+                    cum += tf;
                 }
+                $postings.tfs.push(cum);
 
-                *last_tf += start_tf;
+                // let docs = (&$postings.docs).to_sequence();
+                // let mut tfs = CumEncoder::new(*last_tf, (&$postings.tfs).to_sequence());
+                // let _ = tfs.next().unwrap();
+
+                // let _ = enc.tfs.write_sequence(tfs).unwrap();
+                // let _ = enc.docs.write_sequence(docs).unwrap();
+
+                // let mut tfs2 = CumEncoder::new(0, (&$postings.tfs).to_sequence());
+                // let mut start_tf = tfs2.next().unwrap();
+                // while let Some(cum_tf) = tfs2.next() {
+                //     let positions = DeltaEncoder::new((&$postings.positions[start_tf as usize .. cum_tf as usize]).to_sequence());
+                //     let _ = enc.positions.write_sequence(positions).unwrap();
+                //     start_tf = cum_tf;
+                // }
+
+                *last_tf = cum;
                 *postings_ptr += $postings.docs.len() as DocId;
             }
         }
 
         if self.term_id() != 0 {
-            if let Some(ref postings) = self.borrow().postings {
+            if let Some(ref mut postings) = self.borrow_mut().postings {
                 write_postings!(postings);
             }
-            if let Some(ref postings) = self.borrow().prefix_postings {
+            if let Some(ref mut postings) = self.borrow_mut().prefix_postings {
                 write_postings!(postings);
             }
         }

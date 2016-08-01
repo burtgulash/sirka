@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 use std::cmp::Ordering;
 use std::iter::FromIterator; // needed for ::from_iter
 use std::collections::BinaryHeap;
-use postings::{Postings,VecPostings,Sequence,SequenceStorage,PostingsCursor,SimpleCursor,CumEncoder};
+use postings::{Postings,VecPostings,Sequence,SequenceStorage,PostingsCursor,SimpleCursor};
 use postings::slice::SliceSequence;
 use types::*;
 
@@ -46,7 +46,7 @@ fn keep_unique<T: Copy + PartialEq>(xs: &[T]) -> Vec<T> {
 fn create_heap<A: Sequence, B: Sequence, C: Sequence>(to_merge: &[Postings<A, B, C>]) -> BinaryHeap<SimpleCursor<A, B, C>> {
     BinaryHeap::from_iter(to_merge.iter().map(|pp| {
         let mut p = pp.clone();
-        assert!(p.docs.remains() == p.tfs.remains());
+        assert_eq!(p.docs.remains(), p.tfs.remains() - 1);
         assert!(p.docs.remains() > 0);
 
         SimpleCursor::new(p, 0, 0, 0)
@@ -107,6 +107,7 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
         let mut positions_buffer = Vec::new();
 
         loop {
+            println!("CACHING UP {}", current_doc);
             let (doc, tf, positions) = current_cursor.catch_up();
             positions_buffer.extend_from_slice(&positions[..]);
 
@@ -172,7 +173,7 @@ impl<S: Sequence> Postings<S, S, S> {
                 // TODO clones necessary?
                 docs: p.docs.clone(),
                 tfs: p.tfs.clone(),
-                positions: CumEncoder::new(0, p.positions.clone()),
+                positions: p.positions.clone(),
             }
         }).collect();
 

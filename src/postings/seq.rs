@@ -3,31 +3,33 @@ use types::*;
 
 pub trait Sequence: Clone {
     fn remains(&self) -> usize;
-    fn next_position(&self) -> usize;
     fn subsequence(&self, start: usize, len: usize) -> Self;
+    fn current(&self) -> Option<DocId>;
     fn next(&mut self) -> Option<DocId>;
 
-    fn skip_n(&mut self, mut n: usize) -> Option<DocId> {
-        let mut next = None;
+    fn move_n(&mut self, mut n: usize) -> Option<DocId> {
         while n > 0 {
-            next = self.next();
-            if next.is_none() {
-                break;
-            }
             n -= 1;
+            let _ = self.next();
         }
-        next
+        self.current()
     }
 
-    fn skip_to(&mut self, doc_id: DocId) -> (Option<DocId>, usize) {
+    fn move_to(&mut self, doc_id: DocId) -> usize {
+        if let Some(x) = self.current() {
+            if x == doc_id {
+                return 0;
+            }
+        }
+
         let mut skipped = 0;
         while let Some(x) = self.next() {
             skipped += 1;
             if x >= doc_id {
-                return (Some(x), skipped)
+                return skipped
             }
         }
-        (None, skipped)
+        skipped
     }
 
     fn collect(&mut self) -> Vec<DocId> {
