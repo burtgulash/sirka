@@ -65,7 +65,6 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
         //println!("DOCPTR: {}, TFPTR: {}", self.ptr.docs, self.ptr.tfs);
         // Align tfs to docs
         let start_tf = self.postings.tfs.skip_n(self.ahead - 1).unwrap();
-        println!("startTF: {}", start_tf);
         let next_tf = self.postings.tfs.next().unwrap();
         self.ahead = 0;
 

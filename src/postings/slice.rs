@@ -89,7 +89,7 @@ impl<'a> Sequence for SliceSequence<'a> {
     }
 
     fn current(&self) -> DocId {
-        assert!(self.position < self.seq.len());
+        assert!(self.position <= self.seq.len());
         self.seq[self.position - 1]
     }
 

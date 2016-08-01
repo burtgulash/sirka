@@ -50,7 +50,9 @@ fn create_heap<A: Sequence, B: Sequence, C: Sequence>(to_merge: &[Postings<A, B,
         assert_eq!(p.docs.remains(), p.tfs.remains() - 1);
         assert!(p.docs.remains() > 0);
 
-        SimpleCursor::new(p, 0, 0, 0)
+        let mut cur = SimpleCursor::new(p, 0, 0, 0);
+        cur.advance();
+        cur
     }))
 }
 
@@ -82,7 +84,7 @@ impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
 
         let mut heap = create_heap(to_merge);
         let mut first_cursor = heap.pop();
-        let first_doc = first_cursor.as_mut().unwrap().advance().unwrap();
+        let first_doc = first_cursor.as_ref().unwrap().current().unwrap();
 
         MergerWithoutDuplicates {
             frontier: heap,
@@ -180,15 +182,15 @@ impl<S: Sequence> Postings<S, S, S> {
         let mut merger = MergerWithoutDuplicates::new(to_merge);
         while let Some(doc) = merger.advance() {
             let (tf, positions) = merger.catch_up();
-            //println!("DOC: {}, TF: {}, MERGED POS: {:?}", doc, tf, positions);
+            println!("DOC: {}, TF: {}, MERGED POS: {:?}", doc, tf, positions);
             res.docs.push(doc);
             res.tfs.push(tf);
             res.positions.extend_from_slice(&positions);
         }
-        // println!("MERGED: docs: {:?}", &res.docs);
-        // println!("MERGED: tfs: {:?}", &res.tfs);
-        // println!("MERGED: pos: {:?}", &res.positions);
-        // println!("---");
+        println!("MERGED: docs: {:?}", &res.docs);
+        println!("MERGED: tfs: {:?}", &res.tfs);
+        println!("MERGED: pos: {:?}", &res.positions);
+        println!("---");
 
         res
     }
