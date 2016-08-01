@@ -25,11 +25,13 @@ pub struct SimpleCursor<DS, TS, PS> {
 
 impl<DS: Sequence, TS: Sequence, PS: Sequence> SimpleCursor<DS, TS, PS> {
     pub fn new(mut postings: Postings<DS, TS, PS>, doc_ptr: usize, index: usize, term_id: TermId) -> Self {
+        // prime tfs
+        postings.tfs.next();
         SimpleCursor {
             postings: postings,
             i: index,
             term_id: term_id,
-            advanced: true,
+            advanced: false,
             ahead: 0,
         }
     }
@@ -62,13 +64,13 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for Si
 
         //println!("DOCPTR: {}, TFPTR: {}", self.ptr.docs, self.ptr.tfs);
         // Align tfs to docs
-        let start_tf = self.postings.tfs.skip_n(self.ahead).unwrap();
+        let start_tf = self.postings.tfs.skip_n(self.ahead - 1).unwrap();
+        println!("startTF: {}", start_tf);
         let next_tf = self.postings.tfs.next().unwrap();
         self.ahead = 0;
 
         let tf = next_tf - start_tf;
-        println!("TF: {}", tf);
-        let positions = self.postings.positions.subsequence(start_tf as usize, next_tf as usize).to_vec();
+        let positions = self.postings.positions.subsequence(start_tf as usize, tf as usize).to_vec();
 
         (tf, positions)
     }
@@ -96,6 +98,7 @@ mod tests {
         };
         let mut cur = SimpleCursor::new(seqs, 0, 0, 0);
         while let Some(doc_id) = cur.advance() {
+            println!("AHEAD: {}", cur.ahead);
             let (tf, positions) = cur.catch_up();
             println!("DOC: {}, TF: {}, POSITIONS: {:?}", doc_id, tf, positions);
         }

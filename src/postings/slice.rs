@@ -67,7 +67,7 @@ impl<'a> SliceSequence<'a> {
     }
 
     fn get_at(&self) -> Option<DocId> {
-        if self.position < self.seq.len() {
+        if self.position <= self.seq.len() {
             Some(self.seq[self.position - 1])
         } else {
             None
@@ -117,9 +117,12 @@ mod tests {
     fn test_sequence() {
         let docs = vec![5,7,3,9,45,1,0,4,7];
         let mut seq = (&docs[..]).to_sequence();
+        let mut count = 0;
         while let Some(doc) = seq.next() {
+            count += 1;
             println!("Next doc: {}", doc);
         }
+        assert_eq!(count, docs.len());
         println!("---");
     }
 
