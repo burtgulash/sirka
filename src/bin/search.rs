@@ -162,29 +162,11 @@ fn search_daat<DS, TS, PS, C>(mut term_cursors: Vec<C>) -> Vec<DocId>
             break 'align;
         }
 
+        let mut evidence = Vec::new();
         for cur in &mut term_cursors {
             println!("found in doc: {}", cur.current().unwrap());
             result.push(cur.current().unwrap());
-
-            let evidence: DocId = {
-                let (tf, _) = cur.catch_up();
-                tf
-            };
-        }
-
-        for cur in &mut term_cursors {
-//            println!("found in doc: {}", cur.current());
-//            result.push(cur.current());
-//
-            // TODO delta decode these positions
-            // let evidence: Vec<DocId> = {
-            //     let (_, _, mut positions) = cur.catch_up();
-            //     let mut ps = Vec::new();
-            //     while let Some(position) = positions.next() {
-            //         ps.push(position);
-            //     }
-            //     ps
-            // };
+            let tf = cur.catch_up(&mut evidence);
 
             if let Some(doc_id) = cur.advance() {
                 // Start next iteration alignment with maximum doc id
