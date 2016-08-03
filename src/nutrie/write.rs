@@ -3,12 +3,12 @@ use std::io::{Write};
 use std::rc::{Rc,Weak};
 use std::cell::{RefCell,Ref,RefMut};
 use std::ops::Deref;
-use std::iter::{Iterator,Map};
+use std::iter::{Iterator};
 
 use types::*;
 use util::*;
 use nutrie::TrieNodeHeader;
-use postings::{VecPostings,Postings,PostingsCursor,PostingsStore,Sequence,SequenceStorage,SequenceEncoder,RawCursor,MergerWithoutDuplicatesUnrolled};
+use postings::{VecPostings,Postings,PostingsStore,SequenceStorage,SequenceEncoder,RawCursor,MergerWithoutDuplicatesUnrolled};
 
 
 fn delta_encode(xs: &[DocId]) -> Vec<DocId> {

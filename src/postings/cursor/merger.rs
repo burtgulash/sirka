@@ -1,9 +1,7 @@
 use std::cmp::Ordering;
-use std::mem;
 use std::iter::FromIterator; // needed for ::from_iter
 use std::collections::BinaryHeap;
-use postings::{Postings,VecPostings,Sequence,SequenceStorage,PostingsCursor,RawCursor};
-use postings::slice::SliceSequence;
+use postings::{VecPostings,PostingsCursor};
 use types::*;
 
 struct FrontierPointer<C: PostingsCursor> {
@@ -87,7 +85,6 @@ impl<C: PostingsCursor> MergerWithoutDuplicatesUnrolled<C> {
         let mut frontier = create_heap(self.to_merge.take().unwrap());
         let mut ptr = frontier.pop().unwrap();
         let mut current_doc = ptr.current;
-        let mut previous_doc = current_doc;
         let mut positions_buffer = Vec::new();
 
         macro_rules! ADD {
@@ -107,7 +104,7 @@ impl<C: PostingsCursor> MergerWithoutDuplicatesUnrolled<C> {
         'merge: loop {
             loop {
                 if ptr.current == current_doc {
-                    let tf = ptr.cursor.catch_up(&mut positions_buffer);
+                    let _ = ptr.cursor.catch_up(&mut positions_buffer);
                     if let Some(next_doc) = ptr.cursor.advance() {
                         ptr.current = next_doc;
                         frontier.push(ptr);
@@ -150,7 +147,7 @@ impl<C: PostingsCursor> MergerWithoutDuplicates<C> {
         let size = to_merge.iter().map(|c| c.remains()).fold(0, |acc, x| acc + x);
 
         let mut heap = create_heap(to_merge);
-        let mut first_ptr = heap.pop().unwrap();
+        let first_ptr = heap.pop().unwrap();
         let first_doc = first_ptr.current;
 
         MergerWithoutDuplicates {
@@ -185,7 +182,7 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
             //println!("LOOPING");
             if ptr.current == current_doc {
                 self.processed += 1;
-                let tf = ptr.cursor.catch_up(&mut positions_buffer);
+                let _ = ptr.cursor.catch_up(&mut positions_buffer);
 
                 if let Some(next_doc) = ptr.cursor.advance() {
                     ptr.current = next_doc;
@@ -201,7 +198,7 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
                 break;
             }
 
-            if let Some(mut next_ptr) = self.frontier.pop() {
+            if let Some(next_ptr) = self.frontier.pop() {
                 ptr = next_ptr;
             } else {
                 self.current_ptr = None;

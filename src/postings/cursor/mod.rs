@@ -5,7 +5,7 @@ pub mod rawcursor;
 pub mod merger;
 
 use types::*;
-use postings::{VecPostings,Postings,Sequence};
+use postings::{VecPostings,Sequence};
 
 pub trait PostingsCursor {
     type DS: Sequence;
