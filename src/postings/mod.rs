@@ -1,10 +1,8 @@
 pub use self::slice::*;
-pub use self::postings_::*;
 pub use self::seq::*;
 pub use self::cursor::*;
 
 pub mod slice;
-pub mod postings_;
 pub mod seq;
 pub mod cursor;
 

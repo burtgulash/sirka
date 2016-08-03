@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::cmp::Ordering;
 use std::mem;
 use std::iter::FromIterator; // needed for ::from_iter
