@@ -52,7 +52,10 @@ fn main() {
 
     let exact = true;
     if let Some(result) = query(&dict, docs, tfs, pos, exact, query_to_seach) {
-        println!("Found in {} docs!", result.len());
+        println!("Found in {} docs!", result.docs.len());
+        // println!("docs: {:?}", result.docs);
+        // println!("tfs: {:?}", result.tfs);
+        // println!("positions: {:?}", result.positions);
     } else {
         println!("Not found!");
     }
@@ -106,7 +109,7 @@ fn find_terms<'a>(dict: &'a StaticTrie, exact: bool, query: &[&str]) -> Option<V
     Some(headers)
 }
 
-fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, exact: bool, q: &[STRING]) -> Option<Vec<DocId>>
+fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, exact: bool, q: &[STRING]) -> Option<VecPostings>
     where STRING: AsRef<str>,
           DS: Sequence,
           TS: Sequence,
@@ -135,5 +138,5 @@ fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, exac
     });
 
     let intersection = Intersect::new(term_cursors).collect();
-    Some(intersection.docs)
+    Some(intersection)
 }
