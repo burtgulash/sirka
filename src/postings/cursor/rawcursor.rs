@@ -68,7 +68,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor for RawCursor<DS, 
 mod tests {
     use types::*;
     use super::*;
-    use postings::{Postings,Sequence,SequenceStorage};
+    use postings::{VecPostings,Postings,PostingsCursor,Sequence,SequenceStorage};
 
     #[test]
     fn test_cursor() {
@@ -85,9 +85,14 @@ mod tests {
         let mut cur = RawCursor::new(seqs);
         while let Some(doc_id) = cur.advance() {
             println!("AHEAD: {}", cur.ahead);
-            let mut positions = Vec::new();
-            let tf = cur.catch_up(&mut positions);
-            println!("DOC: {}, TF: {}, POSITIONS: {:?}", doc_id, tf, positions);
+            let mut result = VecPostings {
+                docs: Vec::new(),
+                tfs: Vec::new(),
+                positions: Vec::new(),
+            };
+            let num = cur.catch_up(&mut result);
+            assert_eq!(num, 1);
+            println!("DOC: {}, TF: {}, POSITIONS: {:?}", result.docs[0], result.tfs[0], result.positions);
         }
         println!("---");
     }
@@ -106,9 +111,14 @@ mod tests {
         };
         let mut cur = RawCursor::new(seqs);
         while let Some(doc_id) = cur.advance() {
-            let mut positions = Vec::new();
-            let tf = cur.catch_up(&mut positions);
-            println!("DOC: {}, TF: {}, POSITIONS: {:?}", doc_id, tf, positions);
+            let mut result = VecPostings {
+                docs: Vec::new(),
+                tfs: Vec::new(),
+                positions: Vec::new(),
+            };
+            let num = cur.catch_up(&mut result);
+            assert_eq!(num, 1);
+            println!("DOC: {}, TF: {}, POSITIONS: {:?}", result.docs[0], result.tfs[0], result.positions);
         }
         println!("---");
     }
