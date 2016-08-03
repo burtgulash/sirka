@@ -126,7 +126,7 @@ fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, exac
         //};
 
         let mut postings =    exact_postings(&th, docs.clone(), tfs.clone(), pos.clone());
-        RawCursor::new(postings, th.term_id)
+        RawCursor::new(postings)
     }).collect::<Vec<_>>();
 
     // sort sequences ascending by their size to make daat skipping much faster

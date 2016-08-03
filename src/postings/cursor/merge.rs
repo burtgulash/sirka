@@ -58,15 +58,12 @@ fn create_heap<C: PostingsCursor>(to_merge: Vec<C>) -> BinaryHeap<FrontierPointe
 
 pub struct MergerWithoutDuplicatesUnrolled<C: PostingsCursor> {
     to_merge: Option<Vec<C>>,
-    #[allow(dead_code)]
-    term_id: TermId,
 }
 
 impl<C: PostingsCursor> MergerWithoutDuplicatesUnrolled<C> {
-    pub fn new(to_merge: Vec<C>, term_id: TermId) -> Self {
+    pub fn new(to_merge: Vec<C>) -> Self {
         MergerWithoutDuplicatesUnrolled {
             to_merge: Some(to_merge),
-            term_id: term_id,
         }
     }
 
@@ -148,13 +145,12 @@ pub struct MergerWithoutDuplicates<C: PostingsCursor> {
     current_ptr: Option<FrontierPointer<C>>,
     current_doc: DocId,
     merged: VecPostings,
-    term_id: TermId,
     size: usize,
     processed: usize,
 }
 
 impl<C: PostingsCursor> MergerWithoutDuplicates<C> {
-    pub fn new(to_merge: Vec<C>, term_id: TermId) -> Self {
+    pub fn new(to_merge: Vec<C>) -> Self {
         let size = to_merge.iter().map(|c| c.remains()).fold(0, |acc, x| acc + x);
 
         let mut heap = create_heap(to_merge);
@@ -170,7 +166,6 @@ impl<C: PostingsCursor> MergerWithoutDuplicates<C> {
                 tfs: Vec::new(),
                 positions: Vec::new(),
             },
-            term_id: term_id,
             size: size,
             processed: 1, // heap already popped
         }
@@ -238,15 +233,6 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
 
         1
     }
-/*
-    fn term_id(&self) -> TermId {
-        self.term_id
-    }
-
-    fn current(&self) -> Option<DocId> {
-        Some(self.current_doc)
-    }
-    */
 
     fn remains(&self) -> usize {
         self.size - self.processed

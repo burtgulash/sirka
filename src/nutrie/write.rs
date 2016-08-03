@@ -266,23 +266,23 @@ impl<'n> TrieNode<'n> {
                 let borrows = selfb.children.iter().map(|p| { p.borrow() }).collect::<Vec<_>>();
 
                 macro_rules! add_cursor {
-                    ($vector:expr, $postings:expr, $term_id:expr) => {
+                    ($vector:expr, $postings:expr) => {
                         if let Some(ref p) = $postings {
                             $vector.push(RawCursor::new(Postings {
                                 docs: (&p.docs).to_sequence(),
                                 tfs: (&p.tfs).to_sequence(),
                                 positions: (&p.positions).to_sequence(),
-                            }, $term_id));
+                            }));
                         }
                     }
                 }
 
                 let mut postings_to_merge = Vec::new();
                 for child in &borrows {
-                    add_cursor!(postings_to_merge, child.postings, child.t.term_id);
-                    add_cursor!(postings_to_merge, child.prefix_postings, child.t.term_id);
+                    add_cursor!(postings_to_merge, child.postings);
+                    add_cursor!(postings_to_merge, child.prefix_postings);
                 }
-                MergerWithoutDuplicatesUnrolled::new(postings_to_merge, self.term_id()).collect()
+                MergerWithoutDuplicatesUnrolled::new(postings_to_merge).collect()
             };
             self.borrow_mut().prefix_postings = Some(merged_postings);
         }
