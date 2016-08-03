@@ -3,18 +3,20 @@ use postings::{Postings,PostingsCursor,Sequence};
 
 pub struct RawCursor<DS: Sequence, TS: Sequence, PS: Sequence> {
     postings: Postings<DS, TS, PS>,
-    advanced: bool,
     ahead: usize,
+    term_id: TermId,
+    advanced: bool,
 }
 
 impl<DS: Sequence, TS: Sequence, PS: Sequence> RawCursor<DS, TS, PS> {
-    pub fn new(mut postings: Postings<DS, TS, PS>) -> Self {
-        // prime tfs
+    pub fn new(mut postings: Postings<DS, TS, PS>, term_id: TermId) -> Self {
+        // prime tfs, because it has one more element at the end
         postings.tfs.next();
         RawCursor {
             postings: postings,
-            advanced: false,
+            term_id: term_id,
             ahead: 0,
+            advanced: false,
         }
     }
 }
@@ -26,6 +28,10 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor for RawCursor<DS, 
 
     fn remains(&self) -> usize {
         self.postings.docs.remains()
+    }
+
+    fn term_id(&self) -> TermId {
+        self.term_id
     }
 
     fn current(&self) -> Option<DocId> {

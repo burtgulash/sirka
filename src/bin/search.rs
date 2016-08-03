@@ -126,7 +126,7 @@ fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, exac
         //};
 
         let mut postings =    exact_postings(&th, docs.clone(), tfs.clone(), pos.clone());
-        RawCursor::new(postings)
+        RawCursor::new(postings, th.term_id)
     }).collect::<Vec<_>>();
 
     // sort sequences ascending by their size to make daat skipping much faster
@@ -140,8 +140,8 @@ fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, exac
 // search daat = search document at a time
 fn search_daat<C: PostingsCursor>(mut term_cursors: Vec<C>) -> Vec<DocId> {
     let mut result = Vec::new();
-
     let mut current_doc_id = term_cursors[0].current().unwrap();
+
     'intersect: loop {
         'align: loop {
             for cur in &mut term_cursors {

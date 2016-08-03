@@ -19,6 +19,7 @@ pub trait PostingsCursor {
     fn catch_up(&mut self, positions_dst: &mut Vec<DocId>) -> DocId;
     fn current(&self) -> Option<DocId>;
     fn remains(&self) -> usize;
+    fn term_id(&self) -> TermId;
 
     fn collect(&mut self) -> VecPostings {
         let mut result = VecPostings {

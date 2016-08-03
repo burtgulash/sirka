@@ -57,13 +57,15 @@ fn create_heap<C: PostingsCursor>(to_merge: Vec<C>) -> BinaryHeap<FrontierPointe
 }
 
 pub struct MergerWithoutDuplicatesUnrolled<C: PostingsCursor> {
-    to_merge: Option<Vec<C>>
+    to_merge: Option<Vec<C>>,
+    term_id: TermId,
 }
 
 impl<C: PostingsCursor> MergerWithoutDuplicatesUnrolled<C> {
-    pub fn new(to_merge: Vec<C>) -> Self {
+    pub fn new(to_merge: Vec<C>, term_id: TermId) -> Self {
         MergerWithoutDuplicatesUnrolled {
-            to_merge: Some(to_merge)
+            to_merge: Some(to_merge),
+            term_id: term_id,
         }
     }
 
@@ -138,12 +140,13 @@ pub struct MergerWithoutDuplicates<C: PostingsCursor> {
     current_doc: DocId,
     current_positions: Option<Vec<DocId>>,
     current_tf: DocId,
+    term_id: TermId,
     size: usize,
     processed: usize,
 }
 
 impl<C: PostingsCursor> MergerWithoutDuplicates<C> {
-    pub fn new(to_merge: Vec<C>) -> Self {
+    pub fn new(to_merge: Vec<C>, term_id: TermId) -> Self {
         let size = to_merge.iter().map(|c| c.remains()).fold(0, |acc, x| acc + x);
 
         let mut heap = create_heap(to_merge);
@@ -155,9 +158,10 @@ impl<C: PostingsCursor> MergerWithoutDuplicates<C> {
             current_ptr: Some(first_ptr),
             current_doc: first_doc,
             current_positions: None,
-            current_tf: 1137,
+            current_tf: 1337,
+            term_id: term_id,
             size: size,
-            processed: 1,
+            processed: 1, // heap already popped
         }
     }
 }
@@ -233,6 +237,10 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
             positions_dst.push(position);
         }
         self.current_tf
+    }
+
+    fn term_id(&self) -> TermId {
+        self.term_id
     }
 
     fn current(&self) -> Option<DocId> {
