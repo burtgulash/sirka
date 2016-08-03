@@ -8,7 +8,7 @@ use std::iter::{Iterator,Map};
 use types::*;
 use util::*;
 use nutrie::TrieNodeHeader;
-use postings::{VecPostings,Postings,PostingsStore,Sequence,SequenceStorage,SequenceEncoder};
+use postings::{VecPostings,Postings,PostingsStore,Sequence,SequenceStorage,SequenceEncoder,SimpleCursor,MergerWithoutDuplicates};
 
 
 fn delta_encode(xs: &[DocId]) -> Vec<DocId> {
@@ -264,25 +264,26 @@ impl<'n> TrieNode<'n> {
 
                 // Need to store actual borrows first
                 let borrows = selfb.children.iter().map(|p| { p.borrow() }).collect::<Vec<_>>();
-                let mut postings_to_merge = Vec::new();
-                for p in &borrows {
-                    // TODO this shouldn't be necessary
-                    if let Some(ref postings) = p.postings {
-                        postings_to_merge.push(Postings {
+                let mut postings_to_merge = Vec::<SimpleCursor<_,_,_>>::new();
+                for child in &borrows {
+                //for child in &selfb.children {
+                    if let Some(ref postings) = child.postings {
+                        postings_to_merge.push(SimpleCursor::new(Postings {
                             docs: (&postings.docs).to_sequence(),
                             tfs: (&postings.tfs).to_sequence(),
                             positions: (&postings.positions).to_sequence(),
-                        });
+                        }));
                     }
-                    if let Some(ref postings) = p.prefix_postings {
-                        postings_to_merge.push(Postings {
+                    if let Some(ref postings) = child.prefix_postings {
+                        postings_to_merge.push(SimpleCursor::new(Postings {
                             docs: (&postings.docs).to_sequence(),
                             tfs: (&postings.tfs).to_sequence(),
                             positions: (&postings.positions).to_sequence(),
-                        });
+                        }));
                     }
                 }
-                Postings::merge_without_duplicates(&postings_to_merge[..])
+                MergerWithoutDuplicates::merged(postings_to_merge)
+                //Postings::merge_without_duplicates(postings_to_merge)
             };
             self.borrow_mut().prefix_postings = Some(merged_postings);
         }

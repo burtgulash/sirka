@@ -1,11 +1,11 @@
 use types::*;
 use postings::{Postings,Sequence};
 
-pub trait PostingsCursor<DS, TS, PS>
-    where DS: Sequence,
-          TS: Sequence,
-          PS: Sequence,
-{
+pub trait PostingsCursor {
+    type DS: Sequence;
+    type TS: Sequence;
+    type PS: Sequence;
+
     fn advance(&mut self) -> Option<DocId>;
     fn advance_to(&mut self, doc_id: DocId) -> Option<DocId>;
     fn catch_up(&mut self, positions_dst: &mut Vec<DocId>) -> DocId;
@@ -14,30 +14,29 @@ pub trait PostingsCursor<DS, TS, PS>
 }
 
 
-pub struct SimpleCursor<DS, TS, PS> {
+pub struct SimpleCursor<DS: Sequence, TS: Sequence, PS: Sequence> {
     postings: Postings<DS, TS, PS>,
     advanced: bool,
     ahead: usize,
-
-    i: usize,
-    term_id: TermId,
 }
 
 impl<DS: Sequence, TS: Sequence, PS: Sequence> SimpleCursor<DS, TS, PS> {
-    pub fn new(mut postings: Postings<DS, TS, PS>, doc_ptr: usize, index: usize, term_id: TermId) -> Self {
+    pub fn new(mut postings: Postings<DS, TS, PS>) -> Self {
         // prime tfs
         postings.tfs.next();
         SimpleCursor {
             postings: postings,
-            i: index,
-            term_id: term_id,
             advanced: false,
             ahead: 0,
         }
     }
 }
 
-impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor<DS, TS, PS> for SimpleCursor<DS, TS, PS> {
+impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor for SimpleCursor<DS, TS, PS> {
+    type DS = DS;
+    type TS = TS;
+    type PS = PS;
+
     fn remains(&self) -> usize {
         self.postings.docs.remains()
     }

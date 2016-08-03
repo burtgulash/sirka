@@ -7,31 +7,31 @@ use postings::{Postings,VecPostings,Sequence,SequenceStorage,PostingsCursor,Simp
 use postings::slice::SliceSequence;
 use types::*;
 
-struct FrontierPointer<A: Sequence, B: Sequence, C: Sequence> {
+struct FrontierPointer<C: PostingsCursor> {
     current: DocId,
-    cursor: SimpleCursor<A, B, C>,
+    cursor: C,
 }
 
-impl<A: Sequence, B: Sequence, C: Sequence> Ord for FrontierPointer<A, B, C> {
+impl<C: PostingsCursor> Ord for FrontierPointer<C> {
     fn cmp(&self, other: &Self) -> Ordering {
         // Switch compare order because Rust's BinaryHeap is a maxheap We want a minheap
         self.current.cmp(&other.current).reverse()
     }
 }
 
-impl<A: Sequence, B: Sequence, C: Sequence> PartialOrd for FrontierPointer<A, B, C> {
+impl<C: PostingsCursor> PartialOrd for FrontierPointer<C> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<A: Sequence, B: Sequence, C: Sequence> PartialEq for FrontierPointer<A, B, C> {
+impl<C: PostingsCursor> PartialEq for FrontierPointer<C> {
     fn eq(&self, other: &Self) -> bool {
         self.current == other.current
     }
 }
 
-impl<A: Sequence, B: Sequence, C: Sequence> Eq for FrontierPointer<A, B, C> {}
+impl<C: PostingsCursor> Eq for FrontierPointer<C> {}
 
 
 fn keep_unique<T: Copy + PartialEq>(xs: &[T]) -> Vec<T> {
@@ -49,13 +49,13 @@ fn keep_unique<T: Copy + PartialEq>(xs: &[T]) -> Vec<T> {
     res
 }
 
-fn create_heap<A: Sequence, B: Sequence, C: Sequence>(to_merge: &[Postings<A, B, C>]) -> BinaryHeap<FrontierPointer<A, B, C>> {
-    BinaryHeap::from_iter(to_merge.iter().map(|pp| {
-        let mut p = pp.clone();
-        assert_eq!(p.docs.remains(), p.tfs.remains() - 1);
-        assert!(p.docs.remains() > 0);
+fn create_heap<DS: Sequence, TS: Sequence, PS: Sequence, C>(to_merge: Vec<C>) -> BinaryHeap<FrontierPointer<C>>
+    where C: PostingsCursor<DS=DS, TS=TS, PS=PS>
+{
+    BinaryHeap::from_iter(to_merge.into_iter().map(|mut cur| {
+        // assert_eq!(p.docs.remains(), p.tfs.remains() - 1);
+        // assert!(p.docs.remains() > 0);
 
-        let mut cur = SimpleCursor::new(p, 0, 0, 0);
         let current = cur.advance().unwrap();
         FrontierPointer {
             current: current,
@@ -64,9 +64,11 @@ fn create_heap<A: Sequence, B: Sequence, C: Sequence>(to_merge: &[Postings<A, B,
     }))
 }
 
-struct MergerWithoutDuplicates<A: Sequence, B: Sequence, C: Sequence> {
-    frontier: BinaryHeap<FrontierPointer<A, B, C>>,
-    current_ptr: Option<FrontierPointer<A,B,C>>,
+pub struct MergerWithoutDuplicates<DS: Sequence, TS: Sequence, PS: Sequence, C> 
+    where C: PostingsCursor<DS=DS, TS=TS, PS=PS>
+{
+    frontier: BinaryHeap<FrontierPointer<C>>,
+    current_ptr: Option<FrontierPointer<C>>,
     current_doc: DocId,
     current_positions: Option<Vec<DocId>>,
     current_tf: DocId,
@@ -74,9 +76,12 @@ struct MergerWithoutDuplicates<A: Sequence, B: Sequence, C: Sequence> {
     processed: usize,
 }
 
-impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
-    pub fn new(to_merge: &[Postings<A, B, C>]) -> Self {
-        let size = to_merge.iter().map(|p| p.docs.remains()).fold(0, |acc, x| acc + x);
+impl<DS: Sequence, TS: Sequence, PS: Sequence, C> MergerWithoutDuplicates<DS, TS, PS, C>
+    where C: PostingsCursor<DS=DS, TS=TS, PS=PS>
+{
+    pub fn new(to_merge: Vec<C>) -> Self {
+        // let size = to_merge.iter().map(|p| p.docs.remains()).fold(0, |acc, x| acc + x);
+        let size = 0;
 
         let mut heap = create_heap(to_merge);
         let mut first_ptr = heap.pop().unwrap();
@@ -92,9 +97,45 @@ impl<A: Sequence, B: Sequence, C: Sequence> MergerWithoutDuplicates<A, B, C> {
             processed: 1,
         }
     }
+
+    pub fn merged(to_merge: Vec<C>) -> VecPostings {
+        let mut res = VecPostings {
+            docs: Vec::new(),
+            tfs: Vec::new(),
+            positions: Vec::new(),
+        };
+
+       //println!("TO MERGE:");
+       //for m in to_merge.iter() {
+       //    println!("DOCS: {:?}", m.docs.clone().to_vec());
+       //    println!("tfs: {:?}", m.tfs.clone().to_vec());
+       //    println!("pos: {:?}", m.positions.clone().to_vec());
+       //}
+       //println!("---");
+
+        let mut merger = MergerWithoutDuplicates::new(to_merge);
+        while let Some(doc) = merger.advance() {
+            let tf = merger.catch_up(&mut res.positions);
+//            println!("DOC: {}, TF: {}, MERGED POS: {:?}", doc, tf, positions);
+            res.docs.push(doc);
+            res.tfs.push(tf);
+        }
+       // println!("MERGED: docs: {:?}", &res.docs);
+       // println!("MERGED: tfs: {:?}", &res.tfs);
+       // println!("MERGED: pos: {:?}", &res.positions);
+       // println!("---\n\n");
+
+        res
+    }
 }
 
-impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWithoutDuplicates<A, B, C> {
+impl<DS: Sequence, TS: Sequence, PS: Sequence, C> PostingsCursor for MergerWithoutDuplicates<DS, TS, PS, C>
+    where C: PostingsCursor<DS=DS, TS=TS, PS=PS>
+{
+    type DS = DS;
+    type TS = TS;
+    type PS = PS;
+
     fn advance(&mut self) -> Option<DocId> {
         if self.current_ptr.is_none() {
             return None;
@@ -172,6 +213,7 @@ impl<A: Sequence, B: Sequence, C: Sequence> PostingsCursor<A, B, C> for MergerWi
     }
 }
 
+/*
 impl<S: Sequence> Postings<S, S, S> {
     pub fn merge_without_duplicates_unrolled(to_merge: &[Self]) -> VecPostings {
         let mut res = VecPostings {
@@ -268,3 +310,4 @@ impl<S: Sequence> Postings<S, S, S> {
         res
     }
 }
+*/
