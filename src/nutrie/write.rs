@@ -8,7 +8,7 @@ use std::iter::{Iterator,Map};
 use types::*;
 use util::*;
 use nutrie::TrieNodeHeader;
-use postings::{VecPostings,Postings,PostingsStore,Sequence,SequenceStorage,SequenceEncoder,RawCursor,MergerWithoutDuplicates};
+use postings::{VecPostings,Postings,PostingsCursor,PostingsStore,Sequence,SequenceStorage,SequenceEncoder,RawCursor,MergerWithoutDuplicatesUnrolled};
 
 
 fn delta_encode(xs: &[DocId]) -> Vec<DocId> {
@@ -282,7 +282,7 @@ impl<'n> TrieNode<'n> {
                     add_cursor!(postings_to_merge, child.postings);
                     add_cursor!(postings_to_merge, child.prefix_postings);
                 }
-                MergerWithoutDuplicates::merged(postings_to_merge)
+                MergerWithoutDuplicatesUnrolled::new(postings_to_merge).collect()
             };
             self.borrow_mut().prefix_postings = Some(merged_postings);
         }

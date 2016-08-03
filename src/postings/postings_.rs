@@ -59,6 +59,83 @@ fn create_heap<C: PostingsCursor>(to_merge: Vec<C>) -> BinaryHeap<FrontierPointe
     }))
 }
 
+pub struct MergerWithoutDuplicatesUnrolled<C: PostingsCursor> {
+    to_merge: Option<Vec<C>>
+}
+
+impl<C: PostingsCursor> MergerWithoutDuplicatesUnrolled<C> {
+    pub fn new(to_merge: Vec<C>) -> Self {
+        MergerWithoutDuplicatesUnrolled {
+            to_merge: Some(to_merge)
+        }
+    }
+
+    pub fn collect(&mut self) -> VecPostings {
+        let mut res = VecPostings {
+            docs: Vec::new(),
+            tfs: Vec::new(),
+            positions: Vec::new(),
+        };
+
+       //println!("TO MERGE:");
+       //for m in to_merge.iter() {
+       //    println!("DOCS: {:?}", m.docs.clone().to_vec());
+       //    println!("tfs: {:?}", m.tfs.clone().to_vec());
+       //    println!("pos: {:?}", m.positions.clone().to_vec());
+       //}
+       //println!("---");
+
+        let mut frontier = create_heap(self.to_merge.take().unwrap());
+        let mut ptr = frontier.pop().unwrap();
+        let mut current_doc = ptr.current;
+        let mut previous_doc = current_doc;
+        let mut positions_buffer = Vec::new();
+
+        macro_rules! ADD {
+            () => {
+                assert!(positions_buffer.len() > 0);
+                positions_buffer.sort();
+                let unique_positions = keep_unique(&positions_buffer);
+                let tf = unique_positions.len() as DocId;
+                positions_buffer.clear();
+
+                res.docs.push(current_doc);
+                res.tfs.push(tf);
+                res.positions.extend_from_slice(&unique_positions[..]);
+            }
+        }
+
+        'merge: loop {
+            loop {
+                if ptr.current == current_doc {
+                    let tf = ptr.cursor.catch_up(&mut positions_buffer);
+                    if let Some(next_doc) = ptr.cursor.advance() {
+                        ptr.current = next_doc;
+                        frontier.push(ptr);
+                    }
+                } else {
+                    ADD!();
+                    current_doc = ptr.current;
+                    break;
+                }
+
+                if let Some(next_ptr) = frontier.pop() {
+                    ptr = next_ptr;
+                } else {
+                    ADD!();
+                    break 'merge;
+                }
+            }
+        }
+         // println!("MERGED: docs: {:?}", &res.docs);
+         // println!("MERGED: tfs: {:?}", &res.tfs);
+         // println!("MERGED: pos: {:?}", &res.positions);
+         // println!("---\n\n");
+
+        res
+    }
+}
+
 pub struct MergerWithoutDuplicates<C: PostingsCursor> {
     frontier: BinaryHeap<FrontierPointer<C>>,
     current_ptr: Option<FrontierPointer<C>>,
@@ -86,36 +163,6 @@ impl<C: PostingsCursor> MergerWithoutDuplicates<C> {
             size: size,
             processed: 1,
         }
-    }
-
-    pub fn merged(to_merge: Vec<C>) -> VecPostings {
-        let mut res = VecPostings {
-            docs: Vec::new(),
-            tfs: Vec::new(),
-            positions: Vec::new(),
-        };
-
-       //println!("TO MERGE:");
-       //for m in to_merge.iter() {
-       //    println!("DOCS: {:?}", m.docs.clone().to_vec());
-       //    println!("tfs: {:?}", m.tfs.clone().to_vec());
-       //    println!("pos: {:?}", m.positions.clone().to_vec());
-       //}
-       //println!("---");
-
-        let mut merger = MergerWithoutDuplicates::new(to_merge);
-        while let Some(doc) = merger.advance() {
-            let tf = merger.catch_up(&mut res.positions);
-//            println!("DOC: {}, TF: {}, MERGED POS: {:?}", doc, tf, positions);
-            res.docs.push(doc);
-            res.tfs.push(tf);
-        }
-       // println!("MERGED: docs: {:?}", &res.docs);
-       // println!("MERGED: tfs: {:?}", &res.tfs);
-       // println!("MERGED: pos: {:?}", &res.positions);
-       // println!("---\n\n");
-
-        res
     }
 
     pub fn merged_unrolled(to_merge: Vec<C>) -> VecPostings {
