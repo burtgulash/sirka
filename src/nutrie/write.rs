@@ -308,7 +308,7 @@ impl<'n> TrieNode<'n> {
         macro_rules! write_postings {
             ($enc:expr, $postings:expr) => {
                 if let Some(ref mut postings) = $postings {
-                    assert!(is_sorted_ascending(&postings.docs)); // TODO disable this for performance?
+                    debug_assert!(is_sorted_ascending(&postings.docs));
 
                     // println!("OLD TFS: {:?}", &postings.tfs);
                     let mut cum = 0;

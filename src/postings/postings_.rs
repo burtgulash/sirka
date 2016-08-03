@@ -230,7 +230,7 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
         //println!("MIMO LOOP");
 
 
-        assert!(positions_buffer.len() > 0);
+        assert!(positions_buffer.len() > 0, "No positions found. Is 'tfs' encoded as cumulative?");
         positions_buffer.sort();
         let unique_positions = keep_unique(&positions_buffer);
         self.current_tf = unique_positions.len() as DocId;
@@ -263,5 +263,43 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
 
     fn remains(&self) -> usize {
         self.size - self.processed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use postings::{RawCursor,VecPostings,Postings,PostingsCursor,Sequence,SequenceStorage};
+
+    #[test]
+    fn test_merge_without_duplicates() {
+        let ps1 = VecPostings {
+            docs: vec![1, 2],
+            tfs: vec![0, 1, 2], // NOTE: tfs must already be cumulated!
+            positions: vec![1, 2],
+        };
+        let ps2 = VecPostings {
+            docs: vec![2, 3],
+            tfs: vec![0, 2, 5], // NOTE: tfs must already be cumulated!
+            positions: vec![1, 2, 1, 2, 3],
+        };
+
+        let ps1c = RawCursor::new(Postings {
+            docs: (&ps1.docs).to_sequence(),
+            tfs: (&ps1.tfs).to_sequence(),
+            positions: (&ps1.positions).to_sequence(),
+        });
+        let ps2c = RawCursor::new(Postings {
+            docs: (&ps2.docs).to_sequence(),
+            tfs: (&ps2.tfs).to_sequence(),
+            positions: (&ps2.positions).to_sequence(),
+        });
+
+        let mut merger = MergerWithoutDuplicates::new(vec![ps1c, ps2c]);
+        let mut merged = merger.collect();
+
+        assert_eq!(merged.docs, vec![1, 2, 3]);
+        assert_eq!(merged.tfs, vec![1, 2, 3]); // NOTE: result tfs are not cumulated though!
+        assert_eq!(merged.positions, vec![1, 1, 2, 1, 2, 3]);
     }
 }

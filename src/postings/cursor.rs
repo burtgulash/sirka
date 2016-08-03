@@ -1,5 +1,5 @@
 use types::*;
-use postings::{Postings,Sequence};
+use postings::{VecPostings,Postings,Sequence};
 
 pub trait PostingsCursor {
     type DS: Sequence;
@@ -11,6 +11,20 @@ pub trait PostingsCursor {
     fn catch_up(&mut self, positions_dst: &mut Vec<DocId>) -> DocId;
     fn current(&self) -> Option<DocId>;
     fn remains(&self) -> usize;
+
+    fn collect(&mut self) -> VecPostings {
+        let mut result = VecPostings {
+            docs: Vec::new(),
+            tfs: Vec::new(),
+            positions: Vec::new(),
+        };
+        while let Some(doc_id) = self.advance() {
+            let tf = self.catch_up(&mut result.positions);
+            result.docs.push(doc_id);
+            result.tfs.push(tf);
+        }
+        result
+    }
 }
 
 
@@ -97,10 +111,11 @@ mod tests {
             tfs: (&ps.tfs).to_sequence(),
             positions: (&ps.positions).to_sequence(),
         };
-        let mut cur = RawCursor::new(seqs, 0, 0, 0);
+        let mut cur = RawCursor::new(seqs);
         while let Some(doc_id) = cur.advance() {
             println!("AHEAD: {}", cur.ahead);
-            let (tf, positions) = cur.catch_up();
+            let mut positions = Vec::new();
+            let tf = cur.catch_up(&mut positions);
             println!("DOC: {}, TF: {}, POSITIONS: {:?}", doc_id, tf, positions);
         }
         println!("---");
@@ -118,9 +133,10 @@ mod tests {
             tfs: (&ps.tfs).to_sequence(),
             positions: (&ps.positions).to_sequence(),
         };
-        let mut cur = RawCursor::new(seqs, 0, 0, 0);
+        let mut cur = RawCursor::new(seqs);
         while let Some(doc_id) = cur.advance() {
-            let (tf, positions) = cur.catch_up();
+            let mut positions = Vec::new();
+            let tf = cur.catch_up(&mut positions);
             println!("DOC: {}, TF: {}, POSITIONS: {:?}", doc_id, tf, positions);
         }
         println!("---");
