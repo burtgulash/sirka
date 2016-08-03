@@ -67,11 +67,15 @@ pub struct Intersect<C: PostingsCursor> {
 impl<C: PostingsCursor> Intersect<C> {
     pub fn new(mut cursors: Vec<C>) -> Self {
         let size = cursors.iter().map(|c| c.remains()).min().unwrap();
-        let first = cursors[0].advance().unwrap();
+        let first = cursors[0].advance();
+        let (finished, first) = match first {
+            Some(x) => (false, x),
+            None => (true, 0),
+        };
         Intersect {
             cursors: cursors,
             current: first,
-            finished: false,
+            finished: finished,
             size: size,
         }
     }
@@ -83,6 +87,10 @@ impl<C: PostingsCursor> PostingsCursor for Intersect<C> {
     type PS = C::PS;
 
     fn advance(&mut self) -> Option<DocId> {
+        if self.finished {
+            return None;
+        }
+
         'align: loop {
             for cur in &mut self.cursors {
                 if let Some(next_doc) = cur.advance_to(self.current) {

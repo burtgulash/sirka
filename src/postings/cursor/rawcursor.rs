@@ -4,7 +4,6 @@ use postings::{VecPostings,Postings,PostingsCursor,Sequence};
 pub struct RawCursor<DS: Sequence, TS: Sequence, PS: Sequence> {
     postings: Postings<DS, TS, PS>,
     ahead: usize,
-    advanced: bool,
 }
 
 impl<DS: Sequence, TS: Sequence, PS: Sequence> RawCursor<DS, TS, PS> {
@@ -14,7 +13,6 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> RawCursor<DS, TS, PS> {
         RawCursor {
             postings: postings,
             ahead: 0,
-            advanced: false,
         }
     }
 }
@@ -29,7 +27,6 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor for RawCursor<DS, 
     }
 
     fn advance(&mut self) -> Option<DocId> {
-        self.advanced = true;
         self.ahead += 1;
         self.postings.docs.next() 
     }
@@ -41,8 +38,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor for RawCursor<DS, 
     }
 
     fn catch_up(&mut self, result: &mut VecPostings) -> usize {
-        assert!(self.advanced);
-        self.advanced = false;
+        assert!(self.ahead > 0);
 
         //println!("DOCPTR: {}, TFPTR: {}", self.ptr.docs, self.ptr.tfs);
         // Align tfs to docs

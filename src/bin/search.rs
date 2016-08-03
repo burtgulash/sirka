@@ -134,6 +134,6 @@ fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, exac
         a.remains().cmp(&b.remains())
     });
 
-    let intersection = IntersectUnrolled::new(term_cursors).collect();
+    let intersection = Intersect::new(term_cursors).collect();
     Some(intersection.docs)
 }

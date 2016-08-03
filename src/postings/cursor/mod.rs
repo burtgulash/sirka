@@ -34,7 +34,7 @@ pub trait PostingsCursor {
             tfs: Vec::new(),
             positions: Vec::new(),
         };
-        while let Some(doc_id) = self.advance() {
+        while let Some(_) = self.advance() {
             let _ = self.catch_up(&mut result);
         }
         result
