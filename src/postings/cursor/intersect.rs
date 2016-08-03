@@ -1,6 +1,5 @@
 use types::*;
 use postings::{PostingsCursor,VecPostings};
-use std::cmp::min;
 use std::usize;
 
 pub struct IntersectUnrolled<C: PostingsCursor> {

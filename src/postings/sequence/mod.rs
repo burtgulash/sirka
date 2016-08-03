@@ -24,6 +24,9 @@ pub trait Sequence: Clone {
 
     fn skip_to(&mut self, doc_id: DocId) -> (usize, Option<DocId>) {
         let mut skipped = 0;
+        if self.current() == doc_id {
+            return (skipped, Some(doc_id));
+        }
         while let Some(x) = self.next() {
             skipped += 1;
             if x >= doc_id {

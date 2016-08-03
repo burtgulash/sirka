@@ -140,8 +140,7 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
 
     // Don't forget to write last_tf so that differences tfs[i + 1] - tfs[i] work for all doc
     // positions
-    // let _ = enc.tfs.write(last_tf).unwrap();
-    // TODO already written. remove this
+    let _ = enc.tfs.write(last_tf).unwrap();
 
 
     for t in terms.iter() {
@@ -315,7 +314,8 @@ impl<'n> TrieNode<'n> {
                     for ptr in &mut postings.tfs {
                         let tf = *ptr;
                         let positions = delta_encode(&postings.positions[cum as usize .. (cum + tf) as usize]);
-                        // println!("{:?}, POSITIONS WR: {:?}, CUM: {}, TF:{}", &postings.positions, positions, cum, tf);
+                        // println!("positions: {:?}", &postings.positions);
+                        // println!("CUM: {}, TF:{}\n---\n", cum, tf);
                         let _ = $enc.positions.write_sequence((&positions).to_sequence()).unwrap();
 
                         *ptr = cum;
