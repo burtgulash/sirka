@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use std::mem;
 use std::iter::FromIterator; // needed for ::from_iter
 use std::collections::BinaryHeap;
-use postings::{Postings,VecPostings,Sequence,SequenceStorage,PostingsCursor,SimpleCursor};
+use postings::{Postings,VecPostings,Sequence,SequenceStorage,PostingsCursor,RawCursor};
 use postings::slice::SliceSequence;
 use types::*;
 

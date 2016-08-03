@@ -14,17 +14,17 @@ pub trait PostingsCursor {
 }
 
 
-pub struct SimpleCursor<DS: Sequence, TS: Sequence, PS: Sequence> {
+pub struct RawCursor<DS: Sequence, TS: Sequence, PS: Sequence> {
     postings: Postings<DS, TS, PS>,
     advanced: bool,
     ahead: usize,
 }
 
-impl<DS: Sequence, TS: Sequence, PS: Sequence> SimpleCursor<DS, TS, PS> {
+impl<DS: Sequence, TS: Sequence, PS: Sequence> RawCursor<DS, TS, PS> {
     pub fn new(mut postings: Postings<DS, TS, PS>) -> Self {
         // prime tfs
         postings.tfs.next();
-        SimpleCursor {
+        RawCursor {
             postings: postings,
             advanced: false,
             ahead: 0,
@@ -32,7 +32,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> SimpleCursor<DS, TS, PS> {
     }
 }
 
-impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor for SimpleCursor<DS, TS, PS> {
+impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor for RawCursor<DS, TS, PS> {
     type DS = DS;
     type TS = TS;
     type PS = PS;
@@ -97,7 +97,7 @@ mod tests {
             tfs: (&ps.tfs).to_sequence(),
             positions: (&ps.positions).to_sequence(),
         };
-        let mut cur = SimpleCursor::new(seqs, 0, 0, 0);
+        let mut cur = RawCursor::new(seqs, 0, 0, 0);
         while let Some(doc_id) = cur.advance() {
             println!("AHEAD: {}", cur.ahead);
             let (tf, positions) = cur.catch_up();
@@ -118,7 +118,7 @@ mod tests {
             tfs: (&ps.tfs).to_sequence(),
             positions: (&ps.positions).to_sequence(),
         };
-        let mut cur = SimpleCursor::new(seqs, 0, 0, 0);
+        let mut cur = RawCursor::new(seqs, 0, 0, 0);
         while let Some(doc_id) = cur.advance() {
             let (tf, positions) = cur.catch_up();
             println!("DOC: {}, TF: {}, POSITIONS: {:?}", doc_id, tf, positions);
