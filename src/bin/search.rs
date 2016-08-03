@@ -38,20 +38,23 @@ fn main() {
     let mut docs_reader = create_reader(indexdir, "docs");
     let mut docsbuf = Vec::new();
     docs_reader.read_to_end(&mut docsbuf).unwrap();
-    let docs = bytes_to_typed(&docsbuf).to_sequence();
 
     let mut tfs_reader = create_reader(indexdir, "tfs");
     let mut tfsbuf = Vec::new();
     tfs_reader.read_to_end(&mut tfsbuf).unwrap();
-    let tfs = bytes_to_typed(&tfsbuf).to_sequence();
 
     let mut pos_reader = create_reader(indexdir, "positions");
     let mut posbuf = Vec::new();
     pos_reader.read_to_end(&mut posbuf).unwrap();
-    let pos = bytes_to_typed(&posbuf).to_sequence();
+
+    let input_postings = Postings {
+        docs: bytes_to_typed(&docsbuf).to_sequence(),
+        tfs: bytes_to_typed(&tfsbuf).to_sequence(),
+        positions: bytes_to_typed(&posbuf).to_sequence(),
+    };
 
     let exact = true;
-    if let Some(result) = query(&dict, docs, tfs, pos, exact, query_to_seach) {
+    if let Some(result) = query(&dict, &input_postings, exact, query_to_seach) {
         println!("Found in {} docs!", result.docs.len());
         // println!("docs: {:?}", result.docs);
         // println!("tfs: {:?}", result.tfs);
@@ -61,42 +64,46 @@ fn main() {
     }
 }
 
-fn get_postings<DS, TS, PS>(ptr: usize, len: usize, docs: DS, tfs: TS, pos: PS) -> Postings<DS, TS, PS>
+fn get_postings<DS, TS, PS>(ptr: usize, len: usize, p: &Postings<DS, TS, PS>) -> Postings<DS, TS, PS>
     where DS: Sequence,
           TS: Sequence,
           PS: Sequence
 {
     Postings {
-        docs: docs.subsequence(ptr, len),
-        tfs: tfs.subsequence(ptr, len + 1),
-        positions: pos,
+        docs: p.docs.subsequence(ptr, len),
+        tfs: p.tfs.subsequence(ptr, len + 1),
+        positions: p.positions.clone(),
     }
 }
 
-fn exact_postings<DS, TS, PS>(header: &TrieNodeHeader, docs: DS, tfs: TS, pos: PS) -> Postings<DS, TS, PS>
+fn exact_postings<DS, TS, PS>(header: &TrieNodeHeader, postings: &Postings<DS, TS, PS>) -> Postings<DS, TS, PS>
     where DS: Sequence,
           TS: Sequence,
           PS: Sequence
 {
-    get_postings(header.postings_ptr as usize, header.num_postings as usize, docs, tfs, pos)
+    get_postings(header.postings_ptr as usize, header.num_postings as usize, postings)
 }
 
-//fn prefix_postings<DS, TS, PS>(header: &TrieNodeHeader, docs: DS, tfs: TS, pos: PS) -> Postings<DS, TS, PS>
-//    where DS: Sequence,
-//          TS: Sequence,
-//          PS: Sequence
-//{
-//    let mut postings_to_merge = Vec::with_capacity(2);
-//    if header.num_prefix_postings > 0 {
-//        postings_to_merge.push(exact_postings(header, docs.clone(), tfs.clone(), pos.clone()));
-//    }
-//    if header.num_prefix_postings > 0 {
-//        let prefix_postings_ptr = (header.postings_ptr + header.num_postings) as usize;
-//        let prefix_postings_len = header.num_prefix_postings as usize;
-//        postings_to_merge.push(get_postings(prefix_postings_ptr, prefix_postings_len, docs.clone(), tfs.clone(), pos.clone()));
-//    }
-//    Postings::merge_without_duplicates(&postings_to_merge[..])
-//}
+/*
+fn prefix_postings<DS, TS, PS>(header: &TrieNodeHeader, p: &Postings<DS, TS, PS>) -> Postings<DS, TS, PS>
+    where DS: Sequence,
+          TS: Sequence,
+          PS: Sequence
+{
+    let mut postings_to_merge = Vec::with_capacity(2);
+    if header.num_prefix_postings > 0 {
+        let cursor = RawCursor::new(exact_postings(header, postings.clone())));
+        postings_to_merge.push(cursor);
+    }
+    if header.num_prefix_postings > 0 {
+        let prefix_postings_ptr = (header.postings_ptr + header.num_postings) as usize;
+        let prefix_postings_len = header.num_prefix_postings as usize;
+        let cursor = RawCursor::new(get_postings(prefix_postings_ptr, prefix_postings_len, postings.clone()));
+        postings_to_merge.push(cursor);
+    }
+    Postings::merge_without_duplicates(&postings_to_merge[..])
+}
+*/
 
 fn find_terms<'a>(dict: &'a StaticTrie, exact: bool, query: &[&str]) -> Option<Vec<&'a TrieNodeHeader>> {
     let mut headers = Vec::new();
@@ -109,11 +116,11 @@ fn find_terms<'a>(dict: &'a StaticTrie, exact: bool, query: &[&str]) -> Option<V
     Some(headers)
 }
 
-fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, exact: bool, q: &[STRING]) -> Option<VecPostings>
+fn query<STRING, DS, TS, PS>(dict: &StaticTrie, postings: &Postings<DS, TS, PS>, exact: bool, q: &[STRING]) -> Option<VecPostings>
     where STRING: AsRef<str>,
           DS: Sequence,
           TS: Sequence,
-          PS: Sequence
+          PS: Sequence,
 {
     let q = q.iter().map(|s| s.as_ref()).collect::<Vec<&str>>();
     println!("Searching query: {:?}", &q);
@@ -128,8 +135,8 @@ fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, exac
         //    prefix_postings(&th, docs.clone(), tfs.clone(), pos.clone())
         //};
 
-        let mut postings =    exact_postings(&th, docs.clone(), tfs.clone(), pos.clone());
-        RawCursor::new(postings)
+        let ps = exact_postings(&th, postings);
+        RawCursor::new(ps)
     }).collect::<Vec<_>>();
 
     // sort sequences ascending by their size to make daat skipping much faster
