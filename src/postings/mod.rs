@@ -1,9 +1,7 @@
-pub use self::slice::*;
-pub use self::seq::*;
+pub use self::sequence::*;
 pub use self::cursor::*;
 
-pub mod slice;
-pub mod seq;
+pub mod sequence;
 pub mod cursor;
 
 use types::*;

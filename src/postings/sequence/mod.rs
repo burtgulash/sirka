@@ -1,3 +1,6 @@
+pub use self::slice::*;
+pub mod slice;
+
 use std::io;
 use types::*;
 
