@@ -134,46 +134,6 @@ fn query<STRING, DS, TS, PS>(dict: &StaticTrie, docs: DS, tfs: TS, pos: PS, exac
         a.remains().cmp(&b.remains())
     });
 
-    Some(search_daat(term_cursors))
-}
-
-// search daat = search document at a time
-fn search_daat<C: PostingsCursor>(mut term_cursors: Vec<C>) -> Vec<DocId> {
-    let mut result = Vec::new();
-    let mut current_doc_id = term_cursors[0].current().unwrap();
-
-    'intersect: loop {
-        'align: loop {
-            for cur in &mut term_cursors {
-                if let Some(doc_id) = cur.advance_to(current_doc_id) {
-                    if doc_id > current_doc_id {
-                        current_doc_id = doc_id;
-                        continue 'align;
-                    }
-                } else {
-                    break 'intersect;
-                }
-            }
-            break 'align;
-        }
-
-        let mut evidence = Vec::new();
-        for cur in &mut term_cursors {
-            println!("found in doc: {}", cur.current().unwrap());
-            result.push(cur.current().unwrap());
-            let tf = cur.catch_up(&mut evidence);
-
-            if let Some(doc_id) = cur.advance() {
-                // Start next iteration alignment with maximum doc id
-                if doc_id > current_doc_id {
-                    current_doc_id = doc_id;
-                }
-            } else {
-                // This cursor is depleted and thus it can't produce no more matches
-                break 'intersect;
-            }
-        }
-    }
-
-    result
+    let intersection = IntersectUnrolled::new(term_cursors).collect();
+    Some(intersection.docs)
 }

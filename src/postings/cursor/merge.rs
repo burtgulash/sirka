@@ -58,6 +58,7 @@ fn create_heap<C: PostingsCursor>(to_merge: Vec<C>) -> BinaryHeap<FrontierPointe
 
 pub struct MergerWithoutDuplicatesUnrolled<C: PostingsCursor> {
     to_merge: Option<Vec<C>>,
+    #[allow(dead_code)]
     term_id: TermId,
 }
 
