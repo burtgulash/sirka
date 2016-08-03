@@ -88,15 +88,19 @@ impl<C: PostingsCursor> MergerWithoutDuplicatesUnrolled<C> {
         let mut frontier = create_heap(self.to_merge.take().unwrap());
         let mut ptr = frontier.pop().unwrap();
         let mut current_doc = ptr.current;
-        let mut positions_buffer = Vec::new();
+
+        let mut merged = VecPostings {
+            docs: Vec::new(),
+            tfs: Vec::new(),
+            positions: Vec::new(),
+        };
 
         macro_rules! ADD {
             () => {
-                assert!(positions_buffer.len() > 0);
-                positions_buffer.sort();
-                let unique_positions = keep_unique(&positions_buffer);
+                assert!(merged.positions.len() > 0);
+                (&mut merged.positions[..]).sort();
+                let unique_positions = keep_unique(&merged.positions);
                 let tf = unique_positions.len() as DocId;
-                positions_buffer.clear();
 
                 res.docs.push(current_doc);
                 res.tfs.push(tf);
@@ -105,9 +109,13 @@ impl<C: PostingsCursor> MergerWithoutDuplicatesUnrolled<C> {
         }
 
         'merge: loop {
+            merged.docs.clear();
+            merged.tfs.clear();
+            merged.positions.clear();
+
             loop {
                 if ptr.current == current_doc {
-                    let _ = ptr.cursor.catch_up(&mut positions_buffer);
+                    let _ = ptr.cursor.catch_up(&mut merged);
                     if let Some(next_doc) = ptr.cursor.advance() {
                         ptr.current = next_doc;
                         frontier.push(ptr);
@@ -139,8 +147,7 @@ pub struct MergerWithoutDuplicates<C: PostingsCursor> {
     frontier: BinaryHeap<FrontierPointer<C>>,
     current_ptr: Option<FrontierPointer<C>>,
     current_doc: DocId,
-    current_positions: Option<Vec<DocId>>,
-    current_tf: DocId,
+    merged: VecPostings,
     term_id: TermId,
     size: usize,
     processed: usize,
@@ -158,8 +165,11 @@ impl<C: PostingsCursor> MergerWithoutDuplicates<C> {
             frontier: heap,
             current_ptr: Some(first_ptr),
             current_doc: first_doc,
-            current_positions: None,
-            current_tf: 1337,
+            merged: VecPostings {
+                docs: Vec::new(),
+                tfs: Vec::new(),
+                positions: Vec::new(),
+            },
             term_id: term_id,
             size: size,
             processed: 1, // heap already popped
@@ -176,9 +186,9 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
         if self.current_ptr.is_none() {
             return None;
         }
-        let mut positions_buffer = Vec::new();
-        //println!("CUR: {}", self.current_doc);
-                    //println!("HEAP SIZE: {}", self.frontier.len());
+        self.merged.docs.clear();
+        self.merged.tfs.clear();
+        self.merged.positions.clear();
 
         let mut ptr = self.current_ptr.take().unwrap();
         let current_doc = self.current_doc;
@@ -187,7 +197,7 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
             //println!("LOOPING");
             if ptr.current == current_doc {
                 self.processed += 1;
-                let _ = ptr.cursor.catch_up(&mut positions_buffer);
+                let _ = ptr.cursor.catch_up(&mut self.merged);
 
                 if let Some(next_doc) = ptr.cursor.advance() {
                     ptr.current = next_doc;
@@ -212,34 +222,23 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
         }
         //println!("MIMO LOOP");
 
-
-        assert!(positions_buffer.len() > 0, "No positions found. Is 'tfs' encoded as cumulative?");
-        positions_buffer.sort();
-        let unique_positions = keep_unique(&positions_buffer);
-        self.current_tf = unique_positions.len() as DocId;
-        self.current_positions = Some(unique_positions);
-
+        self.merged.docs.push(current_doc);
         Some(current_doc)
     }
 
-    // TODO use this as default impl for trait
-    fn advance_to(&mut self, doc_id: DocId) -> Option<DocId> {
-        while let Some(next_doc_id) = self.advance() {
-            if next_doc_id >= doc_id {
-                return Some(next_doc_id);
-            }
-        }
+    fn catch_up(&mut self, result: &mut VecPostings) -> usize {
+        assert!(self.merged.positions.len() > 0, "No positions found. Is 'tfs' encoded as cumulative?");
+        (&mut self.merged.positions[..]).sort();
+        self.merged.positions = keep_unique(&self.merged.positions);
+        let tf = self.merged.positions.len();
 
-        None
+        result.positions.extend_from_slice(&self.merged.positions[..]);
+        result.tfs.push(tf as DocId);
+        result.docs.push(self.merged.docs[0]);
+
+        1
     }
-
-    fn catch_up(&mut self, positions_dst: &mut Vec<DocId>) -> DocId {
-        for position in self.current_positions.take().unwrap() {
-            positions_dst.push(position);
-        }
-        self.current_tf
-    }
-
+/*
     fn term_id(&self) -> TermId {
         self.term_id
     }
@@ -247,6 +246,7 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
     fn current(&self) -> Option<DocId> {
         Some(self.current_doc)
     }
+    */
 
     fn remains(&self) -> usize {
         self.size - self.processed

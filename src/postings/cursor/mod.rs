@@ -14,12 +14,19 @@ pub trait PostingsCursor {
     type TS: Sequence;
     type PS: Sequence;
 
-    fn advance(&mut self) -> Option<DocId>;
-    fn advance_to(&mut self, doc_id: DocId) -> Option<DocId>;
-    fn catch_up(&mut self, positions_dst: &mut Vec<DocId>) -> DocId;
-    fn current(&self) -> Option<DocId>;
     fn remains(&self) -> usize;
-    fn term_id(&self) -> TermId;
+    fn advance(&mut self) -> Option<DocId>;
+    fn catch_up(&mut self, result: &mut VecPostings) -> usize;
+
+    fn advance_to(&mut self, doc_id: DocId) -> Option<DocId> {
+        while let Some(next_doc_id) = self.advance() {
+            if next_doc_id >= doc_id {
+                return Some(next_doc_id);
+            }
+        }
+
+        None
+    }
 
     fn collect(&mut self) -> VecPostings {
         let mut result = VecPostings {
@@ -28,9 +35,7 @@ pub trait PostingsCursor {
             positions: Vec::new(),
         };
         while let Some(doc_id) = self.advance() {
-            let tf = self.catch_up(&mut result.positions);
-            result.docs.push(doc_id);
-            result.tfs.push(tf);
+            let _ = self.catch_up(&mut result);
         }
         result
     }

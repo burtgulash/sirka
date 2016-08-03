@@ -1,5 +1,5 @@
 use types::*;
-use postings::{Postings,PostingsCursor,Sequence};
+use postings::{VecPostings,Postings,PostingsCursor,Sequence};
 
 pub struct RawCursor<DS: Sequence, TS: Sequence, PS: Sequence> {
     postings: Postings<DS, TS, PS>,
@@ -30,6 +30,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor for RawCursor<DS, 
         self.postings.docs.remains()
     }
 
+    /*
     fn term_id(&self) -> TermId {
         self.term_id
     }
@@ -37,6 +38,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor for RawCursor<DS, 
     fn current(&self) -> Option<DocId> {
         Some(self.postings.docs.current())
     }
+    */
 
     fn advance(&mut self) -> Option<DocId> {
         self.advanced = true;
@@ -50,7 +52,7 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor for RawCursor<DS, 
         x
     }
 
-    fn catch_up(&mut self, positions_dst: &mut Vec<DocId>) -> DocId {
+    fn catch_up(&mut self, result: &mut VecPostings) -> usize {
         assert!(self.advanced);
         self.advanced = false;
 
@@ -63,10 +65,12 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor for RawCursor<DS, 
         let tf = next_tf - start_tf;
         let mut positions = self.postings.positions.subsequence(start_tf as usize, tf as usize);
         while let Some(position) = positions.next() {
-            positions_dst.push(position);
+            result.positions.push(position);
         }
+        result.tfs.push(tf);
+        result.docs.push(self.postings.docs.current());
 
-        tf
+        1
     }
 }
 
