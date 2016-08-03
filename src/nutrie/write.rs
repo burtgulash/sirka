@@ -264,23 +264,23 @@ impl<'n> TrieNode<'n> {
 
                 // Need to store actual borrows first
                 let borrows = selfb.children.iter().map(|p| { p.borrow() }).collect::<Vec<_>>();
+
+                macro_rules! add_cursor {
+                    ($vector:expr, $postings:expr) => {
+                        if let Some(ref p) = $postings {
+                            $vector.push(RawCursor::new(Postings {
+                                docs: (&p.docs).to_sequence(),
+                                tfs: (&p.tfs).to_sequence(),
+                                positions: (&p.positions).to_sequence(),
+                            }));
+                        }
+                    }
+                }
+
                 let mut postings_to_merge = Vec::new();
                 for child in &borrows {
-                //for child in &selfb.children {
-                    if let Some(ref postings) = child.postings {
-                        postings_to_merge.push(RawCursor::new(Postings {
-                            docs: (&postings.docs).to_sequence(),
-                            tfs: (&postings.tfs).to_sequence(),
-                            positions: (&postings.positions).to_sequence(),
-                        }));
-                    }
-                    if let Some(ref postings) = child.prefix_postings {
-                        postings_to_merge.push(RawCursor::new(Postings {
-                            docs: (&postings.docs).to_sequence(),
-                            tfs: (&postings.tfs).to_sequence(),
-                            positions: (&postings.positions).to_sequence(),
-                        }));
-                    }
+                    add_cursor!(postings_to_merge, child.postings);
+                    add_cursor!(postings_to_merge, child.prefix_postings);
                 }
                 MergerWithoutDuplicates::merged(postings_to_merge)
             };
@@ -306,42 +306,40 @@ impl<'n> TrieNode<'n> {
         }
 
         macro_rules! write_postings {
-            ($postings:expr) => {
-                assert!(is_sorted_ascending(&$postings.docs)); // TODO disable this for performance?
+            ($enc:expr, $postings:expr) => {
+                if let Some(ref mut postings) = $postings {
+                    assert!(is_sorted_ascending(&postings.docs)); // TODO disable this for performance?
 
-                // println!("OLD TFS: {:?}", &$postings.tfs);
-                let mut cum = 0;
-                for ptr in &mut $postings.tfs {
-                    let tf = *ptr;
-                    let positions = delta_encode(&$postings.positions[cum as usize .. (cum + tf) as usize]);
-                    // println!("{:?}, POSITIONS WR: {:?}, CUM: {}, TF:{}", &$postings.positions, positions, cum, tf);
-                    let _ = enc.positions.write_sequence((&positions).to_sequence()).unwrap();
+                    // println!("OLD TFS: {:?}", &postings.tfs);
+                    let mut cum = 0;
+                    for ptr in &mut postings.tfs {
+                        let tf = *ptr;
+                        let positions = delta_encode(&postings.positions[cum as usize .. (cum + tf) as usize]);
+                        // println!("{:?}, POSITIONS WR: {:?}, CUM: {}, TF:{}", &postings.positions, positions, cum, tf);
+                        let _ = $enc.positions.write_sequence((&positions).to_sequence()).unwrap();
 
-                    *ptr = cum;
-                    cum += tf;
+                        *ptr = cum;
+                        cum += tf;
+                    }
+
+                    let _ = $enc.docs.write_sequence((&postings.docs).to_sequence()).unwrap();
+                    let mut seq = Vec::with_capacity(postings.tfs.len());
+                    for cumtf in &postings.tfs {
+                        seq.push(*last_tf + cumtf);
+                    }
+                    let _ = $enc.tfs.write_sequence((&seq).to_sequence()).unwrap();
+                    postings.tfs.push(cum);
+                    // println!("NEW TFS: {:?}", &postings.tfs);
+
+                    *postings_ptr += postings.docs.len() as DocId;
+                    *last_tf += cum;
                 }
-
-                let _ = enc.docs.write_sequence((&$postings.docs).to_sequence()).unwrap();
-                let mut seq = Vec::with_capacity($postings.tfs.len());
-                for cumtf in &$postings.tfs {
-                    seq.push(*last_tf + cumtf);
-                }
-                let _ = enc.tfs.write_sequence((&seq).to_sequence()).unwrap();
-                $postings.tfs.push(cum);
-                // println!("NEW TFS: {:?}", &$postings.tfs);
-
-                *postings_ptr += $postings.docs.len() as DocId;
-                *last_tf += cum;
             }
         }
 
         if self.term_id() != 0 {
-            if let Some(ref mut postings) = self.borrow_mut().postings {
-                write_postings!(postings);
-            }
-            if let Some(ref mut postings) = self.borrow_mut().prefix_postings {
-                write_postings!(postings);
-            }
+            write_postings!(enc, self.borrow_mut().postings);
+            write_postings!(enc, self.borrow_mut().prefix_postings);
         }
 
         self.borrow_mut().children.clear();

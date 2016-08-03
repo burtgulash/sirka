@@ -51,9 +51,6 @@ fn keep_unique<T: Copy + PartialEq>(xs: &[T]) -> Vec<T> {
 
 fn create_heap<C: PostingsCursor>(to_merge: Vec<C>) -> BinaryHeap<FrontierPointer<C>> {
     BinaryHeap::from_iter(to_merge.into_iter().map(|mut cur| {
-        // assert_eq!(p.docs.remains(), p.tfs.remains() - 1);
-        // assert!(p.docs.remains() > 0);
-
         let current = cur.advance().unwrap();
         FrontierPointer {
             current: current,
