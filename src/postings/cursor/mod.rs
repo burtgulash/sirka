@@ -1,10 +1,10 @@
 pub use self::rawcursor::*;
-pub use self::merger::*;
 pub use self::intersect::*;
+pub use self::merge::*;
 
 pub mod rawcursor;
-pub mod merger;
 pub mod intersect;
+pub mod merge;
 
 use types::*;
 use postings::{VecPostings,Sequence};
