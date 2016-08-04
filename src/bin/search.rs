@@ -76,6 +76,7 @@ fn get_postings<DS, TS, PS>(ptr: usize, len: usize, p: &Postings<DS, TS, PS>) ->
     }
 }
 
+/*
 fn prefix_cursor<DS, TS, PS>(header: &TrieNodeHeader, p: &Postings<DS, TS, PS>) -> Merge<RawCursor<DS, TS, PS>>
     where DS: Sequence,
           TS: Sequence,
@@ -98,6 +99,7 @@ fn prefix_cursor<DS, TS, PS>(header: &TrieNodeHeader, p: &Postings<DS, TS, PS>) 
     println!("");
     Merge::new(cursors_to_merge)
 }
+*/
 
 fn find_terms<'a>(dict: &'a StaticTrie, exact: bool, query: &[&str]) -> Option<Vec<&'a TrieNodeHeader>> {
     let mut headers = Vec::new();
@@ -128,17 +130,17 @@ fn query<STRING, DS, TS, PS>(dict: &StaticTrie, postings: &Postings<DS, TS, PS>,
     println!("Searching query: {:?}", &q);
     let term_headers = tryopt!(find_terms(&dict, exact, &q));
 
-    if exact {
+    //if exact {
         let term_cursors = term_headers.iter().map(|th| {
             println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
             RawCursor::new(get_postings(th.postings_ptr as usize, th.num_postings as usize, postings))
         }).collect();
         Some(search_daat(term_cursors))
-    } else {
-        let term_cursors = term_headers.iter().map(|th| {
-            println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
-            prefix_cursor(th, postings)
-        }).collect();
-        Some(search_daat(term_cursors))
-    }
+    //} else {
+    //    let term_cursors = term_headers.iter().map(|th| {
+    //        println!("Term found. term='{}', numdocs={}", th.term_id, th.num_postings);
+    //        prefix_cursor(th, postings)
+    //    }).collect();
+    //    Some(search_daat(term_cursors))
+    //}
 }

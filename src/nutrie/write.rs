@@ -59,8 +59,8 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
 
     // Create 2 dummy roots - because you need 2 node pointers - parent and current
     let root_term = WrittenTerm::new("", 0, 0);
-    let root1 = TrieNode::new(None, root_term.clone(), false, None);
-    let root2 = TrieNode::new(Some(root1.clone()), root_term, false, None);
+    let root1 = TrieNode::new(None, root_term.clone(), None);
+    let root2 = TrieNode::new(Some(root1.clone()), root_term, None);
     root1.clone().add_child(root2.clone());
 
     let mut parent: TrieNode = root1.clone();
@@ -72,6 +72,10 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
     let mut last_tf = 0;
 
     for &Term{ref term, term_id} in terms.iter() {
+        // TODO add null termination to terminals
+        // let newterm = format!("{}{}", term, "\0");
+        // term = &newterm;
+
         let prefix_len = common_prefix_len(current.term(), term);
         let child_postings = postings_store.get_postings(term_id);
 
@@ -86,6 +90,8 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
 
         if prefix_len >= current.term().len() {
             parent = current.clone();
+            // // NOTE: With null terminating strings this must be unreachable
+            // unreachable!();
         } else if prefix_len == parent.term().len() {
             current.flush(&parent, &mut dict_ptr, &mut postings_ptr, &mut last_tf, dict_out, enc);
         } else if prefix_len > parent.term().len() {
@@ -100,7 +106,7 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
             new_terms.push(new_term.clone());
             let fork_node = TrieNode::new(
                 current.parent(),
-                new_term, false,
+                new_term,
                 None,
             );
 
@@ -122,7 +128,7 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
         let parent_clone = parent.clone();
         current = parent.add_child(TrieNode::new(
             Some(parent_clone),
-            new_term, true,
+            new_term,
             child_postings,
         ));
     }
@@ -157,16 +163,14 @@ type TrieNodeWeak<'n> = Weak<RefCell<_TrieNode<'n>>>;
 struct TrieNode<'n>(TrieNodeRef<'n>);
 struct _TrieNode<'n> {
     t: WrittenTerm<'n>,
-    is_word: bool,
     pointer_in_dictbuf: Option<usize>,
     postings: Option<VecPostings>,
-    prefix_postings: Option<VecPostings>,
     parent: Option<TrieNodeWeak<'n>>,
     children: Vec<TrieNodeRef<'n>>,
 }
 
 impl<'n> TrieNode<'n> {
-    fn new(parent: Option<TrieNode<'n>>, t: WrittenTerm<'n>, is_word: bool, postings: Option<VecPostings>) -> TrieNode<'n> {
+    fn new(parent: Option<TrieNode<'n>>, t: WrittenTerm<'n>, postings: Option<VecPostings>) -> TrieNode<'n> {
         //if let Some(ref p) = postings {
         //    println!("");
         //    println!("docs: {:?}", &p.docs);
@@ -176,10 +180,8 @@ impl<'n> TrieNode<'n> {
         //}
         TrieNode(Rc::new(RefCell::new(_TrieNode {
             t: t,
-            is_word: is_word,
             pointer_in_dictbuf: None,
             postings: postings,
-            prefix_postings: None,
             parent: parent.map(|p| Rc::downgrade(&p.clone())),
             children: Vec::new(),
         })))
@@ -248,6 +250,44 @@ impl<'n> TrieNode<'n> {
         }).collect()
     }
 
+    fn write_postings<DE, TE, PE>(&self, enc: &mut PostingsEncoders<DE, TE, PE>, postings_ptr: &mut DocId, last_tf: &mut DocId)
+        where
+          DE: SequenceEncoder,
+          TE: SequenceEncoder,
+          PE: SequenceEncoder,
+    {
+        assert!(self.borrow().postings.is_some());
+        if let Some(ref mut postings) = self.borrow_mut().postings {
+            debug_assert!(is_sorted_ascending(&postings.docs));
+
+            // println!("OLD TFS: {:?}", &postings.tfs);
+            let mut cum = 0;
+            for ptr in &mut postings.tfs {
+                let tf = *ptr;
+                let positions = delta_encode(&postings.positions[cum as usize .. (cum + tf) as usize]);
+                // println!("positions: {:?}", &postings.positions);
+                // println!("CUM: {}, TF:{}\n---\n", cum, tf);
+                let _ = enc.positions.write_sequence((&positions).to_sequence()).unwrap();
+
+                *ptr = cum;
+                cum += tf;
+            }
+
+            let _ = enc.docs.write_sequence((&postings.docs).to_sequence()).unwrap();
+            let mut seq = Vec::with_capacity(postings.tfs.len());
+            for cumtf in &postings.tfs {
+                seq.push(*last_tf + cumtf);
+            }
+            let _ = enc.tfs.write_sequence((&seq).to_sequence()).unwrap();
+            postings.tfs.push(cum);
+            // println!("NEW TFS: {:?}", &postings.tfs);
+
+            *postings_ptr += postings.docs.len() as DocId;
+            *last_tf += cum;
+        }
+    }
+
+
     fn flush<W, DE, TE, PE>(&self, parent: &Self, dict_ptr: &mut usize, postings_ptr: &mut DocId, last_tf: &mut DocId,
                             dict_out: &mut W, enc: &mut PostingsEncoders<DE, TE, PE>)
         where W: Write,
@@ -255,36 +295,6 @@ impl<'n> TrieNode<'n> {
               TE: SequenceEncoder,
               PE: SequenceEncoder
     {
-        // println!("flushing node with {} children: term: '{}'", self_borrow.children.len(), self.term());
-        if self.borrow().children.len() > 0 {
-            let merged_postings = {
-                let selfb = self.borrow();
-                assert!(selfb.children.len() <= u32::max_value() as usize);
-
-                // Need to store actual borrows first
-                let borrows = selfb.children.iter().map(|p| { p.borrow() }).collect::<Vec<_>>();
-
-                macro_rules! add_cursor {
-                    ($vector:expr, $postings:expr) => {
-                        if let Some(ref p) = $postings {
-                            $vector.push(RawCursor::new(Postings {
-                                docs: (&p.docs).to_sequence(),
-                                tfs: (&p.tfs).to_sequence(),
-                                positions: (&p.positions).to_sequence(),
-                            }));
-                        }
-                    }
-                }
-
-                let mut postings_to_merge = Vec::new();
-                for child in &borrows {
-                    add_cursor!(postings_to_merge, child.postings);
-                    add_cursor!(postings_to_merge, child.prefix_postings);
-                }
-                MergerWithoutDuplicatesUnrolled::new(postings_to_merge).collect()
-            };
-            self.borrow_mut().prefix_postings = Some(merged_postings);
-        }
 
         let dict_position = *dict_ptr;
         let prefix = parent.term();
@@ -294,7 +304,29 @@ impl<'n> TrieNode<'n> {
         let header = TrieNodeHeader::from_trienode(TrieNode(self.0.clone()), prefix, *postings_ptr);
         *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
 
+        // println!("flushing node with {} children: term: '{}'", self_borrow.children.len(), self.term());
         if self.borrow().children.len() > 0 {
+            let merged_postings = {
+                let selfb = self.borrow();
+                assert!(selfb.children.len() <= u32::max_value() as usize);
+
+                // Need to store actual borrows first
+                let borrows = selfb.children.iter().map(|p| { p.borrow() }).collect::<Vec<_>>();
+
+                let mut postings_to_merge = Vec::new();
+                for child in &borrows {
+                    if let Some(ref p) = child.postings {
+                        postings_to_merge.push(RawCursor::new(Postings {
+                            docs: (&p.docs).to_sequence(),
+                            tfs: (&p.tfs).to_sequence(),
+                            positions: (&p.positions).to_sequence(),
+                        }));
+                    }
+                }
+                MergerWithoutDuplicatesUnrolled::new(postings_to_merge).collect()
+            };
+            self.borrow_mut().postings = Some(merged_postings);
+
             // TODO assert that children_index and child_pointers are in ascending order
             let children_index = self.create_child_index();
             let child_pointers = self.create_child_pointers();
@@ -304,44 +336,7 @@ impl<'n> TrieNode<'n> {
             *dict_ptr += dict_out.write(&[0,8][..align_to(*dict_ptr, mem::align_of::<TrieNodeHeader>())]).unwrap();
         }
 
-        macro_rules! write_postings {
-            ($enc:expr, $postings:expr) => {
-                if let Some(ref mut postings) = $postings {
-                    debug_assert!(is_sorted_ascending(&postings.docs));
-
-                    // println!("OLD TFS: {:?}", &postings.tfs);
-                    let mut cum = 0;
-                    for ptr in &mut postings.tfs {
-                        let tf = *ptr;
-                        let positions = delta_encode(&postings.positions[cum as usize .. (cum + tf) as usize]);
-                        // println!("positions: {:?}", &postings.positions);
-                        // println!("CUM: {}, TF:{}\n---\n", cum, tf);
-                        let _ = $enc.positions.write_sequence((&positions).to_sequence()).unwrap();
-
-                        *ptr = cum;
-                        cum += tf;
-                    }
-
-                    let _ = $enc.docs.write_sequence((&postings.docs).to_sequence()).unwrap();
-                    let mut seq = Vec::with_capacity(postings.tfs.len());
-                    for cumtf in &postings.tfs {
-                        seq.push(*last_tf + cumtf);
-                    }
-                    let _ = $enc.tfs.write_sequence((&seq).to_sequence()).unwrap();
-                    postings.tfs.push(cum);
-                    // println!("NEW TFS: {:?}", &postings.tfs);
-
-                    *postings_ptr += postings.docs.len() as DocId;
-                    *last_tf += cum;
-                }
-            }
-        }
-
-        if self.term_id() != 0 {
-            write_postings!(enc, self.borrow_mut().postings);
-            write_postings!(enc, self.borrow_mut().prefix_postings);
-        }
-
+        self.write_postings(enc, postings_ptr, last_tf);
         self.borrow_mut().children.clear();
         self.borrow_mut().pointer_in_dictbuf = Some(dict_position);
     }
@@ -372,20 +367,13 @@ impl TrieNodeHeader {
         // TODO Handle longer strings by truncating
         assert!(term.len() < u16::max_value() as usize);
 
-        let num_prefix_postings = match n.borrow().prefix_postings {
-            Some(ref postings) => postings.docs.len(),
-            None => 0,
-        };
-
         TrieNodeHeader {
             postings_ptr: postings_ptr,
             term_ptr: (n.term_ptr() + prefix.len()) as u32,
             term_id: n.borrow().t.term_id,
             term_length: term.len() as u16,
             num_postings: n.postings_len() as u64,
-            num_prefix_postings: num_prefix_postings as u64,
             num_children: n.borrow().children.len() as u32,
-            is_word: n.borrow().is_word,
         }
     }
 }
