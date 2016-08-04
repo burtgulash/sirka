@@ -348,6 +348,10 @@ impl TrieNode {
         }
         self.borrow_mut().children.clear();
         self.borrow_mut().pointer_in_dictbuf = Some(dict_position);
+
+        if self.borrow().children.len() > 0 && self.term_len() == "_\0".len() {
+            self.borrow_mut().postings = None;
+        }
     }
 }
 
