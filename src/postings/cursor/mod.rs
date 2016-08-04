@@ -15,9 +15,7 @@ pub trait PostingsCursor {
     type PS: Sequence;
 
     // TODO unsafe because it performs no bounds or error checking
-    unsafe fn current(&self) -> DocId { // TODO temporary
-        0
-    }
+    unsafe fn current(&self) -> DocId;
 
     fn remains(&self) -> usize;
     fn advance(&mut self) -> Option<DocId>;
