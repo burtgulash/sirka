@@ -73,9 +73,9 @@ pub fn create_trie<PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &[Term], p
 
     for &Term{ref term, term_id} in terms.iter() {
         // TODO add null termination to terminals
-        let newterm = format!("{}{}", term, "\0");
+        let nullterm = format!("{}{}", term, "\0");
 
-        let prefix_len = common_prefix_len(&current.borrow().t.term, &newterm);
+        let prefix_len = common_prefix_len(&current.borrow().t.term, &nullterm);
         let child_postings = postings_store.get_postings(term_id);
 
         //println!("IT {} {} {}", current.borrow().t.term, term, prefix_len);
@@ -120,9 +120,10 @@ pub fn create_trie<PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &[Term], p
             parent.add_child(fork_node);
         }
 
-        let new_term = WrittenTerm::new(&newterm, term_id, term_ptr);
+        let new_term = WrittenTerm::new(&nullterm, term_id, term_ptr);
         new_terms.push(new_term.clone());
-        term_ptr += newterm.len();
+        // Don't write the terminating '\0' character. Use term.len(), not nullterm.len()
+        term_ptr += term.len();
 
         let parent_clone = parent.clone();
         current = parent.add_child(TrieNode::new(
@@ -260,6 +261,7 @@ impl TrieNode {
           PE: SequenceEncoder,
     {
         assert!(self.borrow().postings.is_some());
+        // println!("Writing postings of size {}", self.postings_len());
         if let Some(ref mut postings) = self.borrow_mut().postings {
             debug_assert!(is_sorted_ascending(&postings.docs));
 
@@ -298,15 +300,6 @@ impl TrieNode {
               TE: SequenceEncoder,
               PE: SequenceEncoder
     {
-
-        let dict_position = *dict_ptr;
-        let prefix = &parent.borrow().t.term;
-
-        // NOTE aligning is not needed when Header, child index and child pointers are aligned
-        // to repr(C) (autoalign)
-        let header = TrieNodeHeader::from_trienode(TrieNode(self.0.clone()), prefix, *postings_ptr);
-        *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
-
         // println!("flushing node with {} children: term: '{}'", self_borrow.children.len(), self.term());
         if self.borrow().children.len() > 0 {
             let merged_postings = {
@@ -329,7 +322,17 @@ impl TrieNode {
                 MergerWithoutDuplicatesUnrolled::new(postings_to_merge).collect()
             };
             self.borrow_mut().postings = Some(merged_postings);
+        }
 
+        let dict_position = *dict_ptr;
+        let prefix = &parent.borrow().t.term;
+
+        // NOTE aligning is not needed when Header, child index and child pointers are aligned
+        // to repr(C) (autoalign)
+        let header = TrieNodeHeader::from_trienode(TrieNode(self.0.clone()), prefix, *postings_ptr);
+        *dict_ptr += dict_out.write(header.to_bytes()).unwrap();
+
+        if self.borrow().children.len() > 0 {
             // TODO assert that children_index and child_pointers are in ascending order
             let children_index = self.create_child_index();
             let child_pointers = self.create_child_pointers();
@@ -339,7 +342,10 @@ impl TrieNode {
             *dict_ptr += dict_out.write(&[0,8][..align_to(*dict_ptr, mem::align_of::<TrieNodeHeader>())]).unwrap();
         }
 
-        self.write_postings(enc, postings_ptr, last_tf);
+        assert!(self.postings_len() > 0);
+        if self.term_id() != 0 {
+            self.write_postings(enc, postings_ptr, last_tf);
+        }
         self.borrow_mut().children.clear();
         self.borrow_mut().pointer_in_dictbuf = Some(dict_position);
     }
@@ -369,6 +375,7 @@ impl TrieNodeHeader {
         let term = &n.borrow().t.term[prefix.len()..];
         // TODO Handle longer strings by truncating
         assert!(term.len() < u16::max_value() as usize);
+        assert!(n.postings_len() > 0);
 
         TrieNodeHeader {
             postings_ptr: postings_ptr,

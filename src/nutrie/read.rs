@@ -57,8 +57,8 @@ impl<'a> StaticTrie<'a> {
         let mut cursor = self.root;
         loop {
             let current_term = cursor.term(self.term_buffer);
-            // println!("looking for: '{}', cursor term: '{}', len: {}", term, current_term, cursor.term_length);
-            // println!("CURSOR: {:?}", cursor);
+            println!("looking for: '{}', cursor term: '{}', len: {}", term, current_term, cursor.term_length);
+            println!("CURSOR: {:?}", cursor);
             let skip = common_prefix_len(current_term, term);
             if skip < term.len() {
                 term = &term[skip..];
