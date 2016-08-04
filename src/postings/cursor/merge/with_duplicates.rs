@@ -57,7 +57,7 @@ impl<C: PostingsCursor> PostingsCursor for Merge<C> {
     type TS = C::TS;
     type PS = C::PS;
 
-    fn current(&self) -> DocId {
+    unsafe fn current(&self) -> DocId {
         self.current_ptr.as_ref().unwrap().cursor.current()
     }
 

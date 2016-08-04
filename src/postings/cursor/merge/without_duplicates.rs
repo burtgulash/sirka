@@ -46,7 +46,7 @@ impl<C: PostingsCursor> MergerWithoutDuplicatesUnrolled<C> {
 
         let mut frontier = create_heap(self.to_merge.take().unwrap());
         let mut ptr = frontier.pop().unwrap();
-        let mut current_doc = ptr.cursor.current();
+        let mut current_doc = unsafe {ptr.cursor.current()};
 
         let mut merged = VecPostings {
             docs: Vec::new(),
@@ -73,14 +73,15 @@ impl<C: PostingsCursor> MergerWithoutDuplicatesUnrolled<C> {
             merged.positions.clear();
 
             loop {
-                if ptr.cursor.current() == current_doc {
+                let next_doc = unsafe {ptr.cursor.current()};
+                if next_doc == current_doc {
                     let _ = ptr.cursor.catch_up(&mut merged);
                     if let Some(next_doc) = ptr.cursor.advance() {
                         frontier.push(ptr);
                     }
                 } else {
                     ADD!();
-                    current_doc = ptr.cursor.current();
+                    current_doc = next_doc;
                     break;
                 }
 
@@ -116,7 +117,7 @@ impl<C: PostingsCursor> MergerWithoutDuplicates<C> {
 
         let mut heap = create_heap(to_merge);
         let first_ptr = heap.pop().unwrap();
-        let first_doc = first_ptr.cursor.current();
+        let first_doc = unsafe {first_ptr.cursor.current()};
 
         MergerWithoutDuplicates {
             frontier: heap,
@@ -138,7 +139,7 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
     type TS = C::TS;
     type PS = C::PS;
 
-    fn current(&self) -> DocId {
+    unsafe fn current(&self) -> DocId {
         self.current_ptr.as_ref().unwrap().cursor.current()
     }
 
@@ -155,7 +156,8 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
 
         loop {
             //println!("LOOPING");
-            if ptr.cursor.current() == current_doc {
+            let next_doc = unsafe {ptr.cursor.current()};
+            if next_doc == current_doc {
                 self.processed += 1;
                 let _ = ptr.cursor.catch_up(&mut self.merged);
 
@@ -164,7 +166,7 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
                     self.frontier.push(ptr);
                 }
             } else {
-                self.current_doc = ptr.cursor.current();
+                self.current_doc = next_doc;
                     //println!("putting backa: {}", self.current_doc);
                 self.current_ptr = Some(ptr);
                 // self.frontier.push(ptr);

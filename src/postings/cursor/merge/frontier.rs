@@ -10,7 +10,7 @@ pub struct FrontierPointer<C: PostingsCursor> {
 impl<C: PostingsCursor> Ord for FrontierPointer<C> {
     fn cmp(&self, other: &Self) -> Ordering {
         // Switch compare order because Rust's BinaryHeap is a maxheap We want a minheap
-        self.cursor.current().cmp(&other.cursor.current()).reverse()
+        unsafe {self.cursor.current().cmp(&other.cursor.current()).reverse()}
     }
 }
 
@@ -22,7 +22,7 @@ impl<C: PostingsCursor> PartialOrd for FrontierPointer<C> {
 
 impl<C: PostingsCursor> PartialEq for FrontierPointer<C> {
     fn eq(&self, other: &Self) -> bool {
-        self.cursor.current() == other.cursor.current()
+        unsafe {self.cursor.current() == other.cursor.current()}
     }
 }
 

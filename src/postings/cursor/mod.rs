@@ -14,10 +14,12 @@ pub trait PostingsCursor {
     type TS: Sequence;
     type PS: Sequence;
 
-    fn remains(&self) -> usize;
-    fn current(&self) -> DocId { // TODO temporary
+    // TODO unsafe because it performs no bounds or error checking
+    unsafe fn current(&self) -> DocId { // TODO temporary
         0
     }
+
+    fn remains(&self) -> usize;
     fn advance(&mut self) -> Option<DocId>;
     fn catch_up(&mut self, result: &mut VecPostings) -> usize;
 
