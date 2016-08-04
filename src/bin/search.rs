@@ -53,7 +53,7 @@ fn main() {
         positions: bytes_to_typed(&posbuf).to_sequence(),
     };
 
-    let exact = true;
+    let exact = false;
     if let Some(result) = query(&dict, &input_postings, exact, query_to_seach) {
         println!("Found in {} docs!", result.docs.len());
         // println!("docs: {:?}", result.docs);
@@ -82,16 +82,20 @@ fn prefix_cursor<DS, TS, PS>(header: &TrieNodeHeader, p: &Postings<DS, TS, PS>) 
           PS: Sequence,
 {
     let mut cursors_to_merge = Vec::with_capacity(2);
-    if header.num_prefix_postings > 0 {
+    println!("header {:?}", header);
+    if header.num_postings > 0 {
+        println!("Choosing prefix postings: {}", header.num_postings);
         let postings = get_postings(header.postings_ptr as usize, header.num_postings as usize, p);
         cursors_to_merge.push(RawCursor::new(postings));
     }
     if header.num_prefix_postings > 0 {
+        println!("Choosing postings: {}", header.num_postings);
         let prefix_postings_ptr = (header.postings_ptr + header.num_postings) as usize;
         let prefix_postings_len = header.num_prefix_postings as usize;
         let postings = get_postings(prefix_postings_ptr, prefix_postings_len, p);
         cursors_to_merge.push(RawCursor::new(postings));
     }
+    println!("");
     Merge::new(cursors_to_merge)
 }
 
