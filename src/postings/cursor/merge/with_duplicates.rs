@@ -82,37 +82,6 @@ impl<C: PostingsCursor> PostingsCursor for Merge<C> {
         } else {
             None
         }
-        /*
-        if let Some(ptr) = self.frontier.pop() {
-            let doc_id = unsafe {ptr.cursor.current()};
-            self.current_ptr = Some(ptr);
-            return Some(doc_id);
-        } else {
-            return None;
-        };
-
-        let doc_id = unsafe {ptr.cursor.current()};
-        if let Some(doc_id) = ptr.cursor.advance() {
-            self.frontier.push(ptr);
-            self.current_ptr = self.frontier.pop();
-        }
-        Some(doc_id)
-
-        */
-            /*
-        if let Some(mut ptr) = self.current_ptr.take() {
-            if let Some(doc_id) = ptr.cursor.advance() {
-                self.frontier.push(ptr);
-                self.current_ptr = self.frontier.pop();
-                return Some(doc_id);
-            }
-        } else if let Some(ptr) = self.frontier.pop() {
-            self.current_ptr = ptr;
-            let doc_id = unsafe {ptr.cursor.current()};
-            Some(doc_id)
-        }
-        None
-        */
     }
 }
 

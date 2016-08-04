@@ -22,6 +22,9 @@ pub trait PostingsCursor {
     fn catch_up(&mut self, result: &mut VecPostings) -> usize;
 
     fn advance_to(&mut self, doc_id: DocId) -> Option<DocId> {
+        if unsafe {self.current()} == doc_id {
+            return Some(doc_id);
+        }
         while let Some(next_doc_id) = self.advance() {
             if next_doc_id >= doc_id {
                 return Some(next_doc_id);
