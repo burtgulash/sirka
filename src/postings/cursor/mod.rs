@@ -15,6 +15,9 @@ pub trait PostingsCursor {
     type PS: Sequence;
 
     fn remains(&self) -> usize;
+    fn current(&self) -> DocId { // TODO temporary
+        0
+    }
     fn advance(&mut self) -> Option<DocId>;
     fn catch_up(&mut self, result: &mut VecPostings) -> usize;
 

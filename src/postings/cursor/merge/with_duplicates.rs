@@ -22,7 +22,7 @@ impl<C: PostingsCursor> MergeUnrolled<C> {
             positions: Vec::new(),
         };
 
-        while let Some(cursor) = frontier.pop() {
+        while let Some(mut cursor) = frontier.pop() {
             let _ = cursor.cursor.catch_up(&mut result);
             if let Some(doc_id) = cursor.cursor.advance() {
                 frontier.push(cursor);
@@ -34,9 +34,8 @@ impl<C: PostingsCursor> MergeUnrolled<C> {
 }
 
 pub struct Merge<C: PostingsCursor> {
-    to_merge: Option<Vec<C>>,
     frontier: BinaryHeap<FrontierPointer<C>>,
-    current_cursor: Option<C>,
+    current_ptr: Option<FrontierPointer<C>>,
     size: usize,
 }
 
@@ -44,11 +43,10 @@ impl<C: PostingsCursor> Merge<C> {
     pub fn new(to_merge: Vec<C>) -> Self {
         let size = to_merge.iter().map(|c| c.remains()).fold(0, |acc, x| acc + x);
         let mut heap = create_heap(to_merge);
-        let first = Some(heap.pop().unwrap().cursor);
+        let first = heap.pop();
         Merge{
-            to_merge: Some(to_merge),
+            current_ptr: first,
             frontier: heap,
-            current_cursor: first,
             size: size,
         }
     }
@@ -59,11 +57,15 @@ impl<C: PostingsCursor> PostingsCursor for Merge<C> {
     type TS = C::TS;
     type PS = C::PS;
 
+    fn current(&self) -> DocId {
+        self.current_ptr.as_ref().unwrap().cursor.current()
+    }
+
     fn advance(&mut self) -> Option<DocId> {
-        if let Some(cursor) = self.current_cursor {
-            if let Some(doc_id) = cursor.cursor.advance() {
-                self.frontier.push(cursor);
-                self.current_cursor = self.frontier.pop();
+        if let Some(mut ptr) = self.current_ptr.take() {
+            if let Some(doc_id) = ptr.cursor.advance() {
+                self.frontier.push(ptr);
+                self.current_ptr = self.frontier.pop();
                 return Some(doc_id);
             }
         }
@@ -71,8 +73,8 @@ impl<C: PostingsCursor> PostingsCursor for Merge<C> {
     }
 
     fn catch_up(&mut self, result: &mut VecPostings) -> usize {
-        if let Some(cursor) = self.current_cursor {
-            cursor.catch_up(result)
+        if let Some(ref mut ptr) = self.current_ptr {
+            ptr.cursor.catch_up(result)
         } else {
             0
         }

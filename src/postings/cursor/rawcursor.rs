@@ -26,6 +26,10 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor for RawCursor<DS, 
         self.postings.docs.remains()
     }
 
+    fn current(&self) -> DocId {
+        self.postings.docs.current()
+    }
+
     fn advance(&mut self) -> Option<DocId> {
         self.ahead += 1;
         self.postings.docs.next() 

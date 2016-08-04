@@ -46,7 +46,7 @@ impl<C: PostingsCursor> MergerWithoutDuplicatesUnrolled<C> {
 
         let mut frontier = create_heap(self.to_merge.take().unwrap());
         let mut ptr = frontier.pop().unwrap();
-        let mut current_doc = ptr.current;
+        let mut current_doc = ptr.cursor.current();
 
         let mut merged = VecPostings {
             docs: Vec::new(),
@@ -73,15 +73,14 @@ impl<C: PostingsCursor> MergerWithoutDuplicatesUnrolled<C> {
             merged.positions.clear();
 
             loop {
-                if ptr.current == current_doc {
+                if ptr.cursor.current() == current_doc {
                     let _ = ptr.cursor.catch_up(&mut merged);
                     if let Some(next_doc) = ptr.cursor.advance() {
-                        ptr.current = next_doc;
                         frontier.push(ptr);
                     }
                 } else {
                     ADD!();
-                    current_doc = ptr.current;
+                    current_doc = ptr.cursor.current();
                     break;
                 }
 
@@ -117,7 +116,7 @@ impl<C: PostingsCursor> MergerWithoutDuplicates<C> {
 
         let mut heap = create_heap(to_merge);
         let first_ptr = heap.pop().unwrap();
-        let first_doc = first_ptr.current;
+        let first_doc = first_ptr.cursor.current();
 
         MergerWithoutDuplicates {
             frontier: heap,
@@ -139,6 +138,10 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
     type TS = C::TS;
     type PS = C::PS;
 
+    fn current(&self) -> DocId {
+        self.current_ptr.as_ref().unwrap().cursor.current()
+    }
+
     fn advance(&mut self) -> Option<DocId> {
         if self.current_ptr.is_none() {
             return None;
@@ -152,17 +155,16 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
 
         loop {
             //println!("LOOPING");
-            if ptr.current == current_doc {
+            if ptr.cursor.current() == current_doc {
                 self.processed += 1;
                 let _ = ptr.cursor.catch_up(&mut self.merged);
 
                 if let Some(next_doc) = ptr.cursor.advance() {
-                    ptr.current = next_doc;
                     //println!("putting back: {}", next_doc);
                     self.frontier.push(ptr);
                 }
             } else {
-                self.current_doc = ptr.current;
+                self.current_doc = ptr.cursor.current();
                     //println!("putting backa: {}", self.current_doc);
                 self.current_ptr = Some(ptr);
                 // self.frontier.push(ptr);
