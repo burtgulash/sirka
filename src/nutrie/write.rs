@@ -342,16 +342,21 @@ impl TrieNode {
             *dict_ptr += dict_out.write(&[0,8][..align_to(*dict_ptr, mem::align_of::<TrieNodeHeader>())]).unwrap();
         }
 
-        assert!(self.postings_len() > 0);
+        // Root node won't be written
         if self.term_id() != 0 {
+            assert!(self.postings_len() > 0);
             self.write_postings(enc, postings_ptr, last_tf);
         }
-        self.borrow_mut().children.clear();
-        self.borrow_mut().pointer_in_dictbuf = Some(dict_position);
 
-        if self.borrow().children.len() > 0 && self.term_len() == "_\0".len() {
+        // Because root node won't be written, remove all postings from 1-character term prefixes.
+        // They will not be needed anymore. This will save some memory during indexing
+        let termlen = self.borrow().t.term.chars().count();
+        if self.borrow().children.len() > 0 && termlen == 1 {
             self.borrow_mut().postings = None;
         }
+
+        self.borrow_mut().children.clear();
+        self.borrow_mut().pointer_in_dictbuf = Some(dict_position);
     }
 }
 
