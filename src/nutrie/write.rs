@@ -24,16 +24,16 @@ fn delta_encode(xs: &[DocId]) -> Vec<DocId> {
 }
 
 #[derive(Clone)]
-pub struct WrittenTerm<'a> {
-    term: &'a str,
+pub struct WrittenTerm {
+    term: String,
     term_ptr: usize,
     term_id: TermId,
 }
 
-impl<'a> WrittenTerm<'a> {
-    fn new(term: &'a str, term_id: TermId, term_ptr: usize) -> WrittenTerm<'a> {
+impl WrittenTerm {
+    fn new(term: &str, term_id: TermId, term_ptr: usize) -> WrittenTerm {
         WrittenTerm {
-            term: term,
+            term: term.into(),
             term_ptr: term_ptr,
             term_id: term_id,
         }
@@ -46,9 +46,9 @@ pub struct PostingsEncoders<DocsEncoder, TfsEncoder, PosEncoder> {
     pub positions: PosEncoder,
 }
 
-pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [Term], postings_store: &mut PS,
+pub fn create_trie<PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &[Term], postings_store: &mut PS,
                                           dict_out: &mut W, enc: &mut PostingsEncoders<DE, TE, PE>)
-    -> (Vec<WrittenTerm<'a>>, usize, usize, usize)
+    -> (Vec<WrittenTerm>, usize, usize, usize)
     where PS: PostingsStore,
           W: Write,
           DE: SequenceEncoder,
@@ -73,32 +73,31 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
 
     for &Term{ref term, term_id} in terms.iter() {
         // TODO add null termination to terminals
-        // let newterm = format!("{}{}", term, "\0");
-        // term = &newterm;
+        let newterm = format!("{}{}", term, "\0");
 
-        let prefix_len = common_prefix_len(current.term(), term);
+        let prefix_len = common_prefix_len(&current.borrow().t.term, &newterm);
         let child_postings = postings_store.get_postings(term_id);
 
-        // println!("IT {} {} {}", current.term(), term, prefix_len);
+        //println!("IT {} {} {}", current.borrow().t.term, term, prefix_len);
 
         // align parent and current pointers
-        while prefix_len < parent.term().len() {
+        while prefix_len < parent.borrow().t.term.len() {
             current.flush(&parent, &mut dict_ptr, &mut postings_ptr, &mut last_tf, dict_out, enc);
             current = parent.clone();
             parent = parent.parent().unwrap();
         }
 
-        if prefix_len >= current.term().len() {
+        if prefix_len >= current.term_len() {
             parent = current.clone();
-            // // NOTE: With null terminating strings this must be unreachable
-            // unreachable!();
-        } else if prefix_len == parent.term().len() {
+            // NOTE: With null terminating strings this must be unreachable (except root)
+            assert_eq!(current.term_id(), 0);
+        } else if prefix_len == parent.term_len() {
             current.flush(&parent, &mut dict_ptr, &mut postings_ptr, &mut last_tf, dict_out, enc);
-        } else if prefix_len > parent.term().len() {
+        } else if prefix_len > parent.term_len() {
             //let parent_term_ptr = current.borrow().term_ptr;
             term_serial += 1;
             let new_term = {
-                let last_term = current.term();
+                let last_term = &current.borrow().t.term;
                 let nt = &last_term[.. cmp::min(last_term.len(), prefix_len)];
                 WrittenTerm::new(nt, term_serial, current.term_ptr())
             };
@@ -121,9 +120,9 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
             parent.add_child(fork_node);
         }
 
-        let new_term = WrittenTerm::new(term, term_id, term_ptr);
+        let new_term = WrittenTerm::new(&newterm, term_id, term_ptr);
         new_terms.push(new_term.clone());
-        term_ptr += term.len();
+        term_ptr += newterm.len();
 
         let parent_clone = parent.clone();
         current = parent.add_child(TrieNode::new(
@@ -158,19 +157,19 @@ pub fn create_trie<'a, PS, W, DE, TE, PE>(mut term_serial: TermId, terms: &'a [T
 
 // 't: 'n means that terms ('t) can live longer than nodes ('n) It is needed so that root term can
 // be allocated in shorter lifetime than that of other terms.  No other reason
-type TrieNodeRef<'n> = Rc<RefCell<_TrieNode<'n>>>;
-type TrieNodeWeak<'n> = Weak<RefCell<_TrieNode<'n>>>;
-struct TrieNode<'n>(TrieNodeRef<'n>);
-struct _TrieNode<'n> {
-    t: WrittenTerm<'n>,
+type TrieNodeRef = Rc<RefCell<_TrieNode>>;
+type TrieNodeWeak = Weak<RefCell<_TrieNode>>;
+struct TrieNode(TrieNodeRef);
+struct _TrieNode {
+    t: WrittenTerm,
     pointer_in_dictbuf: Option<usize>,
     postings: Option<VecPostings>,
-    parent: Option<TrieNodeWeak<'n>>,
-    children: Vec<TrieNodeRef<'n>>,
+    parent: Option<TrieNodeWeak>,
+    children: Vec<TrieNodeRef>,
 }
 
-impl<'n> TrieNode<'n> {
-    fn new(parent: Option<TrieNode<'n>>, t: WrittenTerm<'n>, postings: Option<VecPostings>) -> TrieNode<'n> {
+impl TrieNode {
+    fn new(parent: Option<TrieNode>, t: WrittenTerm, postings: Option<VecPostings>) -> TrieNode {
         //if let Some(ref p) = postings {
         //    println!("");
         //    println!("docs: {:?}", &p.docs);
@@ -187,12 +186,12 @@ impl<'n> TrieNode<'n> {
         })))
     }
 
-    fn set_parent(&mut self, parent: &TrieNodeRef<'n>) {
+    fn set_parent(&mut self, parent: &TrieNodeRef) {
         self.borrow_mut().parent = Some(Rc::downgrade(parent));
         //(&mut *current.borrow_mut()).parent = Some(Rc::downgrade(&parent));
     }
 
-    fn parent(&self) -> Option<TrieNode<'n>> {
+    fn parent(&self) -> Option<TrieNode> {
         match self.borrow().parent {
             Some(ref weak_link) => Some(TrieNode(weak_link.upgrade().unwrap())),
             None => None,
@@ -207,21 +206,25 @@ impl<'n> TrieNode<'n> {
         self.borrow().t.term_ptr
     }
 
-    fn term(&self) -> &'n str {
-        &self.borrow().t.term
+//    fn parent_term_len(&self) -> usize {
+//        self.parent().t.term.len()
+//    }
+
+    fn term_len(&self) -> usize {
+        self.borrow().t.term.len()
     }
 
-    fn add_child(&mut self, child: TrieNode<'n>) -> TrieNode<'n> {
+    fn add_child(&mut self, child: TrieNode) -> TrieNode {
         let borrow = child.clone();
         self.borrow_mut().children.push(child.0);
         TrieNode(borrow.0)
     }
 
-    fn borrow(&self) -> Ref<_TrieNode<'n>> {
+    fn borrow(&self) -> Ref<_TrieNode> {
         self.0.borrow()
     }
 
-    fn borrow_mut(&self) -> RefMut<_TrieNode<'n>> {
+    fn borrow_mut(&self) -> RefMut<_TrieNode> {
         self.0.borrow_mut()
     }
 
@@ -240,7 +243,7 @@ impl<'n> TrieNode<'n> {
     }
 
     fn create_child_index(&self) -> Vec<u32> {
-        let prefix = self.term();
+        let prefix = &self.borrow().t.term;
         self.borrow().children.iter().map(|ch| {
             let ch_borrow = ch.borrow();
             let suffix = &ch_borrow.t.term[prefix.len()..];
@@ -297,7 +300,7 @@ impl<'n> TrieNode<'n> {
     {
 
         let dict_position = *dict_ptr;
-        let prefix = parent.term();
+        let prefix = &parent.borrow().t.term;
 
         // NOTE aligning is not needed when Header, child index and child pointers are aligned
         // to repr(C) (autoalign)
@@ -342,14 +345,14 @@ impl<'n> TrieNode<'n> {
     }
 }
 
-impl<'n> Clone for TrieNode<'n> {
-    fn clone(&self) -> TrieNode<'n> {
+impl Clone for TrieNode {
+    fn clone(&self) -> TrieNode {
         TrieNode(self.0.clone())
     }
 }
 
-impl<'n> Deref for TrieNode<'n> {
-    type Target = TrieNodeRef<'n>;
+impl Deref for TrieNode {
+    type Target = TrieNodeRef;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -362,8 +365,8 @@ impl TrieNodeHeader {
         unsafe { slice::from_raw_parts(self as *const _ as *const u8, mem::size_of::<TrieNodeHeader>()) }
     }
 
-    fn from_trienode<'n>(n: TrieNode<'n>, prefix: &str, postings_ptr: DocId) -> TrieNodeHeader {
-        let term = &n.term()[prefix.len()..];
+    fn from_trienode(n: TrieNode, prefix: &str, postings_ptr: DocId) -> TrieNodeHeader {
+        let term = &n.borrow().t.term[prefix.len()..];
         // TODO Handle longer strings by truncating
         assert!(term.len() < u16::max_value() as usize);
 
