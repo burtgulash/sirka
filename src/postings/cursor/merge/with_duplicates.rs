@@ -77,7 +77,7 @@ impl<C: PostingsCursor> PostingsCursor for Merge<C> {
             let mut ptrs = self.frontier.drain().collect::<Vec<_>>();
             self.frontier.extend(ptrs.into_iter()
                                      .map(|mut ptr| {
-                                         ptr.cursor.advance();
+                                         ptr.cursor.advance_to(doc_id);
                                          ptr
                                      }));
             self.advance()
