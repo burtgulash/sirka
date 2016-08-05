@@ -106,7 +106,6 @@ impl<'a> Sequence for SliceSequence<'a> {
 
 #[cfg(test)]
 mod tests {
-    use types::*;
     use postings::{Sequence,SequenceStorage};
 
     #[test]
@@ -138,11 +137,25 @@ mod tests {
     #[test]
     fn test_slice_subsequence_skip() {
         let docs = vec![5,7,9,11,15,17,50,90, 120, 2000, 2001];
-        let mut seq = (&docs[..]).to_sequence();
+        let seq = (&docs).to_sequence();
         let mut subseq = seq.subsequence(2, 6);
 
         assert_eq!(subseq.next().unwrap(), 9);
         assert_eq!(subseq.skip_to(11), (1, Some(11)));
+        assert_eq!(subseq.skip_to(17), (2, Some(17)));
+        assert_eq!(subseq.skip_to(30), (1, Some(50)));
+        assert_eq!(subseq.skip_to(60), (1, Some(90)));
+        assert_eq!(subseq.skip_to(100000), (0, None));
+    }
+
+    #[test]
+    fn test_slice_subsequence_skip_on_0() {
+        let docs = vec![5,7,9,11,15,17,50,90, 120, 2000, 2001];
+        let seq = (&docs).to_sequence();
+        let mut subseq = seq.subsequence(0, 8);
+
+        assert_eq!(subseq.next().unwrap(), 5);
+        assert_eq!(subseq.skip_to(11), (3, Some(11)));
         assert_eq!(subseq.skip_to(17), (2, Some(17)));
         assert_eq!(subseq.skip_to(30), (1, Some(50)));
         assert_eq!(subseq.skip_to(60), (1, Some(90)));

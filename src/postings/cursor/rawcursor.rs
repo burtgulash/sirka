@@ -66,9 +66,8 @@ impl<DS: Sequence, TS: Sequence, PS: Sequence> PostingsCursor for RawCursor<DS, 
 
 #[cfg(test)]
 mod tests {
-    use types::*;
     use super::*;
-    use postings::{VecPostings,Postings,PostingsCursor,Sequence,SequenceStorage};
+    use postings::{VecPostings,Postings,PostingsCursor,SequenceStorage};
 
     #[test]
     fn test_cursor() {
@@ -91,6 +90,7 @@ mod tests {
                 positions: Vec::new(),
             };
             let num = cur.catch_up(&mut result);
+            assert_eq!(doc_id, result.docs[0]);
             assert_eq!(num, 1);
             println!("DOC: {}, TF: {}, POSITIONS: {:?}", result.docs[0], result.tfs[0], result.positions);
         }
@@ -117,6 +117,7 @@ mod tests {
                 positions: Vec::new(),
             };
             let num = cur.catch_up(&mut result);
+            assert_eq!(doc_id, result.docs[0]);
             assert_eq!(num, 1);
             println!("DOC: {}, TF: {}, POSITIONS: {:?}", result.docs[0], result.tfs[0], result.positions);
         }

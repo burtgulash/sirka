@@ -76,7 +76,7 @@ impl<C: PostingsCursor> MergerWithoutDuplicatesUnrolled<C> {
                 let next_doc = unsafe {ptr.cursor.current()};
                 if next_doc == current_doc {
                     let _ = ptr.cursor.catch_up(&mut merged);
-                    if let Some(next_doc) = ptr.cursor.advance() {
+                    if let Some(_) = ptr.cursor.advance() {
                         frontier.push(ptr);
                     }
                 } else {
@@ -161,7 +161,7 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
                 self.processed += 1;
                 let _ = ptr.cursor.catch_up(&mut self.merged);
 
-                if let Some(next_doc) = ptr.cursor.advance() {
+                if let Some(_) = ptr.cursor.advance() {
                     //println!("putting back: {}", next_doc);
                     self.frontier.push(ptr);
                 }
@@ -208,7 +208,7 @@ impl<C: PostingsCursor> PostingsCursor for MergerWithoutDuplicates<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use postings::{RawCursor,VecPostings,Postings,PostingsCursor,Sequence,SequenceStorage};
+    use postings::{RawCursor,VecPostings,Postings,PostingsCursor,SequenceStorage};
 
     #[test]
     fn test_merge_without_duplicates() {
@@ -235,7 +235,7 @@ mod tests {
         });
 
         let mut merger = MergerWithoutDuplicates::new(vec![ps1c, ps2c]);
-        let mut merged = merger.collect();
+        let merged = merger.collect();
 
         assert_eq!(merged.docs, vec![1, 2, 3]);
         assert_eq!(merged.tfs, vec![1, 2, 3]); // NOTE: result tfs are not cumulated though!
