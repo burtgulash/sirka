@@ -24,7 +24,7 @@ impl<C: PostingsCursor> MergeUnrolled<C> {
 
         while let Some(mut cursor) = frontier.pop() {
             let _ = cursor.cursor.catch_up(&mut result);
-            if let Some(doc_id) = cursor.cursor.advance() {
+            if let Some(_) = cursor.cursor.advance() {
                 frontier.push(cursor);
             }
         }
@@ -42,7 +42,7 @@ pub struct Merge<C: PostingsCursor> {
 impl<C: PostingsCursor> Merge<C> {
     pub fn new(to_merge: Vec<C>) -> Self {
         let size = to_merge.iter().map(|c| c.remains()).fold(0, |acc, x| acc + x);
-        let mut heap = create_heap(to_merge);
+        let heap = create_heap(to_merge);
         Merge{
             current_ptr: None,
             frontier: heap,
@@ -69,6 +69,21 @@ impl<C: PostingsCursor> PostingsCursor for Merge<C> {
         self.current_ptr.as_mut().unwrap().cursor.catch_up(result)
     }
 
+    fn advance_to(&mut self, doc_id: DocId) -> Option<DocId> {
+        let current_doc = unsafe {self.current()};
+        if current_doc >= doc_id {
+            Some(current_doc)
+        } else {
+            let mut ptrs = self.frontier.drain().collect::<Vec<_>>();
+            self.frontier.extend(ptrs.drain(..)
+                                     .map(|mut ptr| {
+                                         ptr.cursor.advance();
+                                         ptr
+                                     }));
+            self.advance()
+        }
+    }
+
     fn advance(&mut self) -> Option<DocId> {
         if let Some(mut ptr) = self.current_ptr.take() {
             if let Some(_) = ptr.cursor.advance() {
@@ -88,7 +103,7 @@ impl<C: PostingsCursor> PostingsCursor for Merge<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use postings::{RawCursor,VecPostings,Postings,PostingsCursor,Sequence,SequenceStorage};
+    use postings::{RawCursor,VecPostings,Postings,PostingsCursor,SequenceStorage};
 
     #[test]
     fn test_merge_with_duplicates() {
@@ -115,7 +130,7 @@ mod tests {
         });
 
         let mut merger = Merge::new(vec![ps1c, ps2c]);
-        let mut merged = merger.collect();
+        let merged = merger.collect();
 
         assert_eq!(merged.docs, vec![1, 2, 2, 3]);
         assert_eq!(merged.tfs, vec![1, 2, 1, 3]);
