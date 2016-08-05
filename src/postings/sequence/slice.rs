@@ -106,7 +106,6 @@ impl<'a> Sequence for SliceSequence<'a> {
 
 #[cfg(test)]
 mod tests {
-    use types::*;
     use postings::{Sequence,SequenceStorage};
 
     #[test]
@@ -138,7 +137,7 @@ mod tests {
     #[test]
     fn test_slice_subsequence_skip() {
         let docs = vec![5,7,9,11,15,17,50,90, 120, 2000, 2001];
-        let mut seq = (&docs[..]).to_sequence();
+        let seq = (&docs).to_sequence();
         let mut subseq = seq.subsequence(2, 6);
 
         assert_eq!(subseq.next().unwrap(), 9);

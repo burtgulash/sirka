@@ -64,7 +64,7 @@ pub struct Intersect<C: PostingsCursor> {
 }
 
 impl<C: PostingsCursor> Intersect<C> {
-    pub fn new(mut cursors: Vec<C>) -> Self {
+    pub fn new(cursors: Vec<C>) -> Self {
         let size = cursors.iter().map(|c| c.remains()).min().unwrap();
         Intersect {
             cursors: cursors,
